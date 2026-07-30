@@ -14,4 +14,7 @@ class PROJECT_GJ_API AGJGameMode : public AGameMode
 {
 	GENERATED_BODY()
 	
+public:
+	AGJGameMode();
+	
 };

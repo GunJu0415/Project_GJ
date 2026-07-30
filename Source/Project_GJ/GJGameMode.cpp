@@ -2,10 +2,12 @@
 
 
 #include "GJGameMode.h"
+#include "GJPlayerController.h" // <== 추가!
+#include "GJCharacter.h"
 
 AGJGameMode::AGJGameMode()
 {
-	// 나중에 만들 PlayerController와 Character C++ 클래스를 여기에 매핑할 예정입니다.
-	// PlayerControllerClass = ARebirthPlayerController::StaticClass();
-	// DefaultPawnClass = ARebirthCharacter::StaticClass();
+	// 기본 컨트롤러와 폰(캐릭터) 클래스 덮어쓰기
+	PlayerControllerClass = AGJPlayerController::StaticClass();
+	DefaultPawnClass = AGJCharacter::StaticClass();
 }

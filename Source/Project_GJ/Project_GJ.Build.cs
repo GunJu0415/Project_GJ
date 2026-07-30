@@ -18,7 +18,11 @@ public class Project_GJ : ModuleRules
 			"NavigationSystem",
 			"StateTreeModule",
 			"GameplayStateTreeModule",
-			"Niagara",
+            "EnhancedInput",        // 향상된 입력 시스템용
+			"GameplayAbilities",    // GAS 코어
+			"GameplayTags",         // 게임플레이 태그
+			"GameplayTasks",         // 게임플레이 태스크
+            "Niagara",
 			"UMG",
 			"Slate"
 		});

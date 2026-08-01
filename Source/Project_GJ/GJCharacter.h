@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "MotionWarpingComponent.h"
 #include "GameFramework/Character.h"
 #include "GJCharacter.generated.h"
 
@@ -14,6 +15,16 @@ struct FInputActionValue;
 // 전방 선언 (컴파일 속도 향상)
 class UCharacterStateComponent;
 
+
+
+enum class EDodgeType
+{
+    Forward,
+    Backward,
+    Left,
+    Right
+};
+
 UCLASS()
 class PROJECT_GJ_API AGJCharacter : public ACharacter
 {
@@ -24,6 +35,9 @@ public:
 
 protected:
     virtual void BeginPlay() override;
+    // 모션 워핑 컴포넌트 선언
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
+    class UMotionWarpingComponent* MotionWarpingComponent;
 
 public:
     virtual void Tick(float DeltaTime) override;
@@ -44,6 +58,8 @@ protected:
     void Move(const FInputActionValue& Value);
 
 protected:
+    EDodgeType DodgeType;
+
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera")
     USpringArmComponent* CameraBoom;
 
@@ -59,7 +75,7 @@ protected:
 
     // 구르기 입력 액션 추가
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Input")
-    UInputAction* RollAction;
+    UInputAction* DodgeAction;
 
     // 카메라 오프셋 설정 변수
     UPROPERTY(EditAnywhere, Category = "Camera|Offset")
@@ -92,16 +108,23 @@ public:
 protected:
     // 블루프린트(에디터)에서 몽타주 에셋을 할당할 수 있도록 열어줍니다.
     UPROPERTY(EditDefaultsOnly, Category = "Animation")
-    UAnimMontage* RollMontage;
+    UAnimMontage* DodgeForwardMontage;
+
+    UPROPERTY(EditDefaultsOnly, Category = "Animation")
+    UAnimMontage* DodgeRightMontage;
+    UPROPERTY(EditDefaultsOnly, Category = "Animation")
+    UAnimMontage* DodgeLeftMontage;
+    UPROPERTY(EditDefaultsOnly, Category = "Animation")
+    UAnimMontage* DodgeBackwardMontage;
 
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
     UCharacterStateComponent* StateComponent;
 
     // 3. 구르기 액션 함수 선언
-    void PerformRoll();
+    void PerformDodge();
 
     // 몽타주가 끝났을 때 호출될 콜백 함수
     UFUNCTION()
-    void OnRollMontageEnded(UAnimMontage* Montage, bool bInterrupted);
+    void OnDodgeMontageEnded(UAnimMontage* Montage, bool bInterrupted);
 
 };

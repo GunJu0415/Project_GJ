@@ -33,6 +33,8 @@ AGJCharacter::AGJCharacter()
 
     // 상태 컴포넌트 생성 및 부착
     StateComponent = CreateDefaultSubobject<UCharacterStateComponent>(TEXT("StateComponent"));
+    // 모션 워핑 컴포넌트 생성
+    MotionWarpingComponent = CreateDefaultSubobject<UMotionWarpingComponent>(TEXT("MotionWarpingComponent"));
 }
 
 void AGJCharacter::BeginPlay()
@@ -52,6 +54,11 @@ void AGJCharacter::BeginPlay()
         PC->bEnableClickEvents = true;
         PC->bEnableMouseOverEvents = true;
     }
+
+    if (UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance())
+    {
+        AnimInstance->OnMontageEnded.AddDynamic(this, &AGJCharacter::OnDodgeMontageEnded);
+    }
 }
 
 void AGJCharacter::Tick(float DeltaTime)
@@ -63,31 +70,6 @@ void AGJCharacter::Tick(float DeltaTime)
     UpdateCharacterRotation();
     UpdateCameraOffset(DeltaTime);
     ApplyCameraOffset();
-
-    // ==========================================
-    // [디버그용 로그 및 시각화 추가]
-    // ==========================================
-
-    // 1. Output Log에 Actor 회전값과 Controller 회전값 찍어보기
-    //UE_LOG(LogTemp, Warning, TEXT("Actor Rotation : %s"), *GetActorRotation().ToString());
-
-    //if (GetController())
-    //{
-    //    UE_LOG(LogTemp, Warning, TEXT("Control Rotation : %s"), *GetControlRotation().ToString());
-    //}
-
-    // 2. 캐릭터 위치에 좌표계 그리기
-    // 빨간선(X축)이 마우스를 따라 돌아가면 액터가 도는 것이고, 안 돌면 Mesh만 도는 것입니다.
-    //DrawDebugCoordinateSystem(
-    //    GetWorld(),
-    //    GetActorLocation(),
-    //    GetActorRotation(),
-    //    150.0f, // 선 길이 (잘 보이게 150으로 설정)
-    //    false,
-    //    0.0f,
-    //    0,
-    //    3.0f  // 선 두께
-    //);
 }
 
 void AGJCharacter::UpdateMouseState()
@@ -111,13 +93,28 @@ void AGJCharacter::UpdateMouseState()
 
 void AGJCharacter::UpdateCharacterRotation()
 {
-    // 마우스가 화면 밖이면 LastValidRotation만 유지하고 리턴
+    // ==========================================
+    // 1. 대시(회피) 중에는 시선 처리를 멈춰서 궤적이 휘는 것을 방지
+    // ==========================================
+    if (StateComponent && StateComponent->GetState() == ECharacterState::Dodge)
+    {
+        return;
+    }
+
+    // ==========================================
+    // 2. 부드러운 회전을 위한 세팅 (RInterpTo 활용)
+    // ==========================================
+    float DeltaTime = GetWorld()->GetDeltaSeconds(); // 헤더 수정 없이 델타 타임 가져오기
+    float RotationSpeed = 45.f; // [튜닝 포인트] 이 수치를 조절해 회전 속도 결정 (높을수록 빠름)
+
+    // 마우스가 화면 밖이면 LastValidRotation으로 부드럽게 회전
     if (!bIsMouseInsideViewport)
     {
-        // [피드백 4 반영] 현재 회전값과 목표 회전값이 다를 때만 SetActorRotation 호출 (최적화)
         if (!GetActorRotation().Equals(LastValidRotation, 0.1f))
         {
-            SetActorRotation(LastValidRotation);
+            // [핵심 변경] 순간이동하듯 돌지 않고, 프레임에 맞춰 부드럽게 회전
+            FRotator SmoothRotation = FMath::RInterpTo(GetActorRotation(), LastValidRotation, DeltaTime, RotationSpeed);
+            SetActorRotation(SmoothRotation);
         }
         return;
     }
@@ -131,7 +128,6 @@ void AGJCharacter::UpdateCharacterRotation()
         FVector PlaneOrigin = GetActorLocation();
         FVector PlaneNormal = FVector::UpVector;
 
-        // [피드백 2 반영] 넉넉한 레이캐스트 거리 확보 (10만 유닛)
         FVector Intersection = FMath::LinePlaneIntersection(
             WorldLocation,
             WorldLocation + (WorldDirection * 100000.f),
@@ -145,10 +141,11 @@ void AGJCharacter::UpdateCharacterRotation()
         {
             LastValidRotation = LookDirection.Rotation();
 
-            // [피드백 4 반영] 회전 최적화
             if (!GetActorRotation().Equals(LastValidRotation, 0.1f))
             {
-                SetActorRotation(LastValidRotation);
+                // [핵심 변경] 마우스가 가리키는 방향으로 부드럽게 보간하며 회전
+                FRotator SmoothRotation = FMath::RInterpTo(GetActorRotation(), LastValidRotation, DeltaTime, RotationSpeed);
+                SetActorRotation(SmoothRotation);
             }
         }
     }
@@ -200,14 +197,12 @@ void AGJCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCompone
             EnhancedInput->BindAction(MoveAction, ETriggerEvent::Triggered, this, &AGJCharacter::Move);
         }
 
-        // 구르기 키 바인딩 (Started: 키를 누르는 순간 1회 발생)
-        if (RollAction)
+        // 회피(Dodge) 키 바인딩 (Started: 키를 누르는 순간 1회 발생)
+        if (DodgeAction)
         {
-            EnhancedInput->BindAction(RollAction, ETriggerEvent::Started, this, &AGJCharacter::PerformRoll);
+            EnhancedInput->BindAction(DodgeAction, ETriggerEvent::Started, this, &AGJCharacter::PerformDodge);
         }
     }
-
-
 }
 
 void AGJCharacter::Move(const FInputActionValue& Value)
@@ -221,57 +216,139 @@ void AGJCharacter::Move(const FInputActionValue& Value)
     AddMovementInput(FVector::RightVector, Movement.X);
 }
 
-void AGJCharacter::PerformRoll()
+void AGJCharacter::PerformDodge()
 {
-    if (StateComponent->GetState() != ECharacterState::Idle)
+    if (MoveInput.IsNearlyZero())
     {
         return;
     }
 
-    if (RollMontage == nullptr)
+    if (!StateComponent || StateComponent->GetState() != ECharacterState::Idle)
     {
-        UE_LOG(LogTemp, Error, TEXT("RollMontage가 할당되지 않았습니다!"));
         return;
     }
 
-    StateComponent->SetState(ECharacterState::Rolling);
+    FVector2D Input = MoveInput.GetSafeNormal();
 
-    // ==========================================
-    // 1. 몽타주 재생 속도 조절
-    // ==========================================
-    // PlayAnimMontage의 두 번째 매개변수가 PlayRate(재생 속도)입니다.
-    // 1.5f로 설정하면 1.5배 빠르게 재생됩니다. 원하는 속도로 맞춰보세요.
-    float PlayRate = 1.5f;
-    PlayAnimMontage(RollMontage, PlayRate);
+    //---------------------------------------
+    // MoveInput -> 월드 방향
+    //---------------------------------------
+    FVector WorldDirection(
+        Input.Y,
+        Input.X,
+        0.f);
 
-    // ==========================================
-    // 2. 몽타주 종료 델리게이트 바인딩 (Idle로 복구)
-    // ==========================================
-    UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
-    if (AnimInstance)
+    WorldDirection.Normalize();
+
+    //---------------------------------------
+    // MoveInput -> 애니메이션 방향 판정 (올바른 축 비교)
+    //---------------------------------------
+    UAnimMontage* Montage = nullptr;
+    float DodgeDistance = 500.f;
+    const float ForwardBackwardRatio = 1.2f;
+
+    // 앞뒤(Input.Y)가 좌우(Input.X)보다 우세한가?
+    if (FMath::Abs(Input.Y) * ForwardBackwardRatio >= FMath::Abs(Input.X))
     {
-        // 델리게이트 객체 생성 및 우리 함수 연결
-        FOnMontageEnded EndDelegate;
-        EndDelegate.BindUObject(this, &AGJCharacter::OnRollMontageEnded);
-
-        // 몽타주가 끝날 때 이 델리게이트를 실행하도록 애니메이션 인스턴스에 예약
-        AnimInstance->Montage_SetEndDelegate(EndDelegate, RollMontage);
+        if (Input.Y > 0.f)
+        {
+            DodgeType = EDodgeType::Forward;
+            Montage = DodgeForwardMontage;
+        }
+        else
+        {
+            DodgeType = EDodgeType::Backward;
+            Montage = DodgeBackwardMontage;
+        }
+    }
+    else
+    {
+        if (Input.X > 0.f)
+        {
+            DodgeType = EDodgeType::Right;
+            Montage = DodgeRightMontage;
+        }
+        else
+        {
+            DodgeType = EDodgeType::Left;
+            Montage = DodgeLeftMontage;
+        }
     }
 
-    // 캐릭터 밀어내기 (속도가 빨라진 만큼 체공 시간이 짧아지므로 밀어내는 힘을 2000.f 등으로 늘려야 할 수도 있습니다)
-    //FVector ForwardDir = GetActorForwardVector();
-   // LaunchCharacter(ForwardDir * 1500.f, true, true);
+    //---------------------------------------
+    // 회전 및 이동 방향 설정 (회피 종료 후 시선 튀는 현상 방지 포함)
+    //---------------------------------------
+    FRotator TargetRotation = GetActorRotation();
+
+    switch (DodgeType)
+    {
+    case EDodgeType::Forward:
+        TargetRotation = WorldDirection.Rotation();
+        SetActorRotation(TargetRotation);
+        break;
+
+    case EDodgeType::Backward:
+        TargetRotation = (-WorldDirection).Rotation();
+        SetActorRotation(TargetRotation);
+        // 뒷점프 시 뒤로 밀려나도록 월드 방향 반전
+        WorldDirection = WorldDirection;
+        break;
+
+    case EDodgeType::Left:
+        // 캐릭터의 현재 시선 기준 좌측 방향 유지 (시선 튐 방지)
+        TargetRotation = GetActorRotation();
+        WorldDirection = -GetActorRightVector();
+        break;
+
+    case EDodgeType::Right:
+        // 캐릭터의 현재 시선 기준 우측 방향 유지 (시선 튐 방지)
+        TargetRotation = GetActorRotation();
+        WorldDirection = GetActorRightVector();
+        break;
+    }
+
+    // 회피 중에 시선이 마우스로 튀지 않도록 LastValidRotation도 함께 동기화
+    LastValidRotation = TargetRotation;
+
+    //---------------------------------------
+    // Motion Warp
+    //---------------------------------------
+    if (MotionWarpingComponent)
+    {
+        FVector WarpTarget =
+            GetActorLocation() +
+            WorldDirection * DodgeDistance;
+
+        MotionWarpingComponent->AddOrUpdateWarpTargetFromLocationAndRotation(
+            TEXT("DodgeTarget"),
+            WarpTarget,
+            TargetRotation);
+    }
+
+    //---------------------------------------
+    // 상태 변경 및 재생
+    //---------------------------------------
+    StateComponent->SetState(ECharacterState::Dodge);
+
+    PlayAnimMontage(Montage);
 }
+
 // 몽타주가 끝나거나, 다른 애니메이션에 의해 끊겼을 때(Interrupted) 자동 실행됨
-void AGJCharacter::OnRollMontageEnded(UAnimMontage* Montage, bool bInterrupted)
+void AGJCharacter::OnDodgeMontageEnded(UAnimMontage* Montage, bool bInterrupted)
 {
-    // 혹시라도 다른 몽타주가 끝난 것이 아니라, '구르기 몽타주'가 끝난 것이 맞는지 확인
-    if (Montage == RollMontage)
+    if (Montage == DodgeForwardMontage ||
+        Montage == DodgeBackwardMontage ||
+        Montage == DodgeLeftMontage ||
+        Montage == DodgeRightMontage)
     {
-        // 상태를 다시 Idle로 복구
-        StateComponent->SetState(ECharacterState::Idle);
+        // 애니메이션 종료 시 상태를 되돌리는 로직
+        if (StateComponent)
+        {
+            StateComponent->SetState(ECharacterState::Idle);
+        }
     }
 }
+
 UAbilitySystemComponent* AGJCharacter::GetAbilitySystemComponent() const
 {
     return nullptr;

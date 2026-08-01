@@ -24,8 +24,9 @@ public class Project_GJ : ModuleRules
 			"GameplayTasks",         // 게임플레이 태스크
             "Niagara",
 			"UMG",
-			"Slate"
-		});
+			"Slate",
+            "MotionWarping"
+        });
 
 		PrivateDependencyModuleNames.AddRange(new string[] { });
 

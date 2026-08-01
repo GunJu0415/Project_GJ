@@ -5,6 +5,8 @@
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
 #include "GameFramework/CharacterMovementComponent.h"
+#include "CharacterStateComponent.h"
+#include "Animation/AnimInstance.h"
 #include "GameFramework/SpringArmComponent.h"
 #include "DrawDebugHelpers.h" // 디버그 라인 출력을 위해 추가
 
@@ -28,6 +30,9 @@ AGJCharacter::AGJCharacter()
     TopDownCameraComponent = CreateDefaultSubobject<UCameraComponent>(TEXT("TopDownCamera"));
     TopDownCameraComponent->SetupAttachment(CameraBoom);
     TopDownCameraComponent->bUsePawnControlRotation = false;
+
+    // 상태 컴포넌트 생성 및 부착
+    StateComponent = CreateDefaultSubobject<UCharacterStateComponent>(TEXT("StateComponent"));
 }
 
 void AGJCharacter::BeginPlay()
@@ -64,25 +69,25 @@ void AGJCharacter::Tick(float DeltaTime)
     // ==========================================
 
     // 1. Output Log에 Actor 회전값과 Controller 회전값 찍어보기
-    UE_LOG(LogTemp, Warning, TEXT("Actor Rotation : %s"), *GetActorRotation().ToString());
+    //UE_LOG(LogTemp, Warning, TEXT("Actor Rotation : %s"), *GetActorRotation().ToString());
 
-    if (GetController())
-    {
-        UE_LOG(LogTemp, Warning, TEXT("Control Rotation : %s"), *GetControlRotation().ToString());
-    }
+    //if (GetController())
+    //{
+    //    UE_LOG(LogTemp, Warning, TEXT("Control Rotation : %s"), *GetControlRotation().ToString());
+    //}
 
     // 2. 캐릭터 위치에 좌표계 그리기
     // 빨간선(X축)이 마우스를 따라 돌아가면 액터가 도는 것이고, 안 돌면 Mesh만 도는 것입니다.
-    DrawDebugCoordinateSystem(
-        GetWorld(),
-        GetActorLocation(),
-        GetActorRotation(),
-        150.0f, // 선 길이 (잘 보이게 150으로 설정)
-        false,
-        0.0f,
-        0,
-        3.0f  // 선 두께
-    );
+    //DrawDebugCoordinateSystem(
+    //    GetWorld(),
+    //    GetActorLocation(),
+    //    GetActorRotation(),
+    //    150.0f, // 선 길이 (잘 보이게 150으로 설정)
+    //    false,
+    //    0.0f,
+    //    0,
+    //    3.0f  // 선 두께
+    //);
 }
 
 void AGJCharacter::UpdateMouseState()
@@ -194,7 +199,15 @@ void AGJCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCompone
         {
             EnhancedInput->BindAction(MoveAction, ETriggerEvent::Triggered, this, &AGJCharacter::Move);
         }
+
+        // 구르기 키 바인딩 (Started: 키를 누르는 순간 1회 발생)
+        if (RollAction)
+        {
+            EnhancedInput->BindAction(RollAction, ETriggerEvent::Started, this, &AGJCharacter::PerformRoll);
+        }
     }
+
+
 }
 
 void AGJCharacter::Move(const FInputActionValue& Value)
@@ -208,6 +221,57 @@ void AGJCharacter::Move(const FInputActionValue& Value)
     AddMovementInput(FVector::RightVector, Movement.X);
 }
 
+void AGJCharacter::PerformRoll()
+{
+    if (StateComponent->GetState() != ECharacterState::Idle)
+    {
+        return;
+    }
+
+    if (RollMontage == nullptr)
+    {
+        UE_LOG(LogTemp, Error, TEXT("RollMontage가 할당되지 않았습니다!"));
+        return;
+    }
+
+    StateComponent->SetState(ECharacterState::Rolling);
+
+    // ==========================================
+    // 1. 몽타주 재생 속도 조절
+    // ==========================================
+    // PlayAnimMontage의 두 번째 매개변수가 PlayRate(재생 속도)입니다.
+    // 1.5f로 설정하면 1.5배 빠르게 재생됩니다. 원하는 속도로 맞춰보세요.
+    float PlayRate = 1.5f;
+    PlayAnimMontage(RollMontage, PlayRate);
+
+    // ==========================================
+    // 2. 몽타주 종료 델리게이트 바인딩 (Idle로 복구)
+    // ==========================================
+    UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
+    if (AnimInstance)
+    {
+        // 델리게이트 객체 생성 및 우리 함수 연결
+        FOnMontageEnded EndDelegate;
+        EndDelegate.BindUObject(this, &AGJCharacter::OnRollMontageEnded);
+
+        // 몽타주가 끝날 때 이 델리게이트를 실행하도록 애니메이션 인스턴스에 예약
+        AnimInstance->Montage_SetEndDelegate(EndDelegate, RollMontage);
+    }
+
+    // 캐릭터 밀어내기 (속도가 빨라진 만큼 체공 시간이 짧아지므로 밀어내는 힘을 2000.f 등으로 늘려야 할 수도 있습니다)
+    //FVector ForwardDir = GetActorForwardVector();
+   // LaunchCharacter(ForwardDir * 1500.f, true, true);
+}
+// 몽타주가 끝나거나, 다른 애니메이션에 의해 끊겼을 때(Interrupted) 자동 실행됨
+void AGJCharacter::OnRollMontageEnded(UAnimMontage* Montage, bool bInterrupted)
+{
+    // 혹시라도 다른 몽타주가 끝난 것이 아니라, '구르기 몽타주'가 끝난 것이 맞는지 확인
+    if (Montage == RollMontage)
+    {
+        // 상태를 다시 Idle로 복구
+        StateComponent->SetState(ECharacterState::Idle);
+    }
+}
 UAbilitySystemComponent* AGJCharacter::GetAbilitySystemComponent() const
 {
     return nullptr;

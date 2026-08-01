@@ -6,6 +6,7 @@
 #include "EnhancedInputSubsystems.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/SpringArmComponent.h"
+#include "DrawDebugHelpers.h" // 디버그 라인 출력을 위해 추가
 
 AGJCharacter::AGJCharacter()
 {
@@ -57,6 +58,31 @@ void AGJCharacter::Tick(float DeltaTime)
     UpdateCharacterRotation();
     UpdateCameraOffset(DeltaTime);
     ApplyCameraOffset();
+
+    // ==========================================
+    // [디버그용 로그 및 시각화 추가]
+    // ==========================================
+
+    // 1. Output Log에 Actor 회전값과 Controller 회전값 찍어보기
+    UE_LOG(LogTemp, Warning, TEXT("Actor Rotation : %s"), *GetActorRotation().ToString());
+
+    if (GetController())
+    {
+        UE_LOG(LogTemp, Warning, TEXT("Control Rotation : %s"), *GetControlRotation().ToString());
+    }
+
+    // 2. 캐릭터 위치에 좌표계 그리기
+    // 빨간선(X축)이 마우스를 따라 돌아가면 액터가 도는 것이고, 안 돌면 Mesh만 도는 것입니다.
+    DrawDebugCoordinateSystem(
+        GetWorld(),
+        GetActorLocation(),
+        GetActorRotation(),
+        150.0f, // 선 길이 (잘 보이게 150으로 설정)
+        false,
+        0.0f,
+        0,
+        3.0f  // 선 두께
+    );
 }
 
 void AGJCharacter::UpdateMouseState()
@@ -173,6 +199,8 @@ void AGJCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCompone
 
 void AGJCharacter::Move(const FInputActionValue& Value)
 {
+    MoveInput = Value.Get<FVector2D>();
+
     const FVector2D Movement = Value.Get<FVector2D>();
     if (Controller == nullptr) return;
 

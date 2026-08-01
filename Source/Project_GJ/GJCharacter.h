@@ -28,6 +28,8 @@ public:
     virtual void SetupPlayerInputComponent(UInputComponent* PlayerInputComponent) override;
     UAbilitySystemComponent* GetAbilitySystemComponent() const;
 
+    UPROPERTY(BlueprintReadOnly, Category = "Animation")
+    FVector2D MoveInput;
 protected:
     // ==========================================
     // [리팩토링] 모듈화된 마우스/카메라 업데이트 함수
@@ -74,4 +76,8 @@ protected:
     FVector CurrentWorldOffset;
     FVector DesiredWorldOffset;
     FRotator LastValidRotation;
+
+
+
+
 };

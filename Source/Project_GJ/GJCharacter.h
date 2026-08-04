@@ -4,6 +4,7 @@
 #include "MotionWarpingComponent.h"
 #include "GJBaseCharacter.h"
 #include "InputActionValue.h"
+#include "GJGameTypes.h" 
 #include "GJCharacter.generated.h"
 
 class USpringArmComponent;
@@ -13,10 +14,9 @@ class UAbilitySystemComponent;
 class UInputAction;
 class UInputMappingContext;
 struct FInputActionValue;
-// 전방 선언 (컴파일 속도 향상)
+class UDataTable;
+class AGJWeaponBase;
 class UCharacterStateComponent;
-
-
 
 enum class EDodgeType
 {
@@ -43,10 +43,8 @@ public:
 
     UPROPERTY(BlueprintReadOnly, Category = "Animation")
     FVector2D MoveInput;
+
 protected:
-    // ==========================================
-    // [리팩토링] 모듈화된 마우스/카메라 업데이트 함수
-    // ==========================================
     void UpdateMouseState();
     void UpdateCharacterRotation();
     void UpdateCameraOffset(float DeltaTime);
@@ -66,13 +64,17 @@ protected:
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Input")
     UInputMappingContext* DefaultMappingContext;
 
-    // 이동 입력
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Input")
     UInputAction* MoveAction;
 
-    // 구르기 입력 액션 추가
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Input")
     UInputAction* DodgeAction;
+
+    // ==========================================
+    // [신규] 콤보 공격 입력
+    // ==========================================
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Input")
+    UInputAction* AttackAction;
 
     // 카메라 오프셋 설정 변수
     UPROPERTY(EditAnywhere, Category = "Camera|Offset")
@@ -84,9 +86,6 @@ protected:
     UPROPERTY(EditAnywhere, Category = "Camera|Offset")
     float CameraOffsetDeadzone = 0.3f;
 
-    // ==========================================
-    // 마우스 및 상태 캐싱 변수
-    // ==========================================
     bool bIsMouseInsideViewport;
     float CurrentMouseX;
     float CurrentMouseY;
@@ -97,28 +96,65 @@ protected:
     FVector DesiredWorldOffset;
     FRotator LastValidRotation;
 
-
 public:
-    // 컴포넌트를 외부에서 읽을 수 있게 Getter 선언 (선택 사항)
     FORCEINLINE UCharacterStateComponent* GetStateComponent() const { return StateComponent; }
 
 protected:
-    // 블루프린트(에디터)에서 몽타주 에셋을 할당할 수 있도록 열어줍니다.
     UPROPERTY(EditDefaultsOnly, Category = "Animation")
     UAnimMontage* DodgeForwardMontage;
 
     UPROPERTY(EditDefaultsOnly, Category = "Animation")
     UAnimMontage* DodgeRightMontage;
+
     UPROPERTY(EditDefaultsOnly, Category = "Animation")
     UAnimMontage* DodgeLeftMontage;
+
     UPROPERTY(EditDefaultsOnly, Category = "Animation")
     UAnimMontage* DodgeBackwardMontage;
 
-    // 3. 구르기 액션 함수 선언
     void PerformDodge();
 
-    // 몽타주가 끝났을 때 호출될 콜백 함수
+    // [수정] 범용 몽타주 종료 처리 함수로 이름 변경
     UFUNCTION()
-    void OnDodgeMontageEnded(UAnimMontage* Montage, bool bInterrupted);
+    void OnMontageEndedEvent(UAnimMontage* Montage, bool bInterrupted);
 
+    // ==========================================
+    // [신규] 콤보 공격 관련 변수 및 함수
+    // ==========================================
+    int32 CurrentComboCount;
+    bool bHasNextComboInput;
+
+    void AttackInputPressed();
+
+public:
+    // 애니메이션 노티파이에서 호출할 브릿지 함수들
+    UFUNCTION(BlueprintCallable, Category = "Combat")
+    void AdvanceCombo();
+
+    UFUNCTION(BlueprintCallable, Category = "Combat")
+    void ResetCombo();
+
+    UFUNCTION(BlueprintCallable, Category = "Combat")
+    void PerformFire();
+
+protected:
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Character Stat")
+    UDataTable* CharacterStatTable;
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Character Stat")
+    FCharacterStat CurrentCharacterStat;
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Character Stat")
+    int32 CurrentLevel;
+
+    UFUNCTION(BlueprintCallable, Category = "Character Stat")
+    void UpdateCharacterStat(int32 NewLevel);
+
+    UPROPERTY(EditDefaultsOnly, Category = "Weapon")
+    TSubclassOf<AGJWeaponBase> DefaultWeaponClass;
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Weapon")
+    AGJWeaponBase* EquippedWeapon;
+
+    void EquipWeapon();
 };

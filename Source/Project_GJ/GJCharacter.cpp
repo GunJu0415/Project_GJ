@@ -8,7 +8,9 @@
 #include "CharacterStateComponent.h"
 #include "Animation/AnimInstance.h"
 #include "GameFramework/SpringArmComponent.h"
-#include "DrawDebugHelpers.h" // 디버그 라인 출력을 위해 추가
+#include "DrawDebugHelpers.h" 
+#include "Engine/DataTable.h" 
+#include "GJWeaponBase.h"      
 
 AGJCharacter::AGJCharacter()
 {
@@ -31,6 +33,11 @@ AGJCharacter::AGJCharacter()
     TopDownCameraComponent->SetupAttachment(CameraBoom);
     TopDownCameraComponent->bUsePawnControlRotation = false;
 
+    CurrentLevel = 1;
+
+    // [신규] 콤보 변수 초기화
+    CurrentComboCount = 0;
+    bHasNextComboInput = false;
 }
 
 void AGJCharacter::BeginPlay()
@@ -53,15 +60,18 @@ void AGJCharacter::BeginPlay()
 
     if (UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance())
     {
-        AnimInstance->OnMontageEnded.AddDynamic(this, &AGJCharacter::OnDodgeMontageEnded);
+        // [수정] 몽타주 종료 콜백 연결
+        AnimInstance->OnMontageEnded.AddDynamic(this, &AGJCharacter::OnMontageEndedEvent);
     }
+
+    UpdateCharacterStat(CurrentLevel);
+    EquipWeapon();
 }
 
 void AGJCharacter::Tick(float DeltaTime)
 {
     Super::Tick(DeltaTime);
 
-    // [피드백 3 반영] 4단계로 역할을 명확히 분리하여 가독성과 유지보수성 극대화
     UpdateMouseState();
     UpdateCharacterRotation();
     UpdateCameraOffset(DeltaTime);
@@ -76,10 +86,8 @@ void AGJCharacter::UpdateMouseState()
     PC->GetViewportSize(ViewportSizeX, ViewportSizeY);
     if (ViewportSizeX <= 0 || ViewportSizeY <= 0) return;
 
-    // 마우스 좌표를 가져오는데 성공했는지 1차 판정
     bIsMouseInsideViewport = PC->GetMousePosition(CurrentMouseX, CurrentMouseY);
 
-    // [피드백 1 반영] 5픽셀 하드코딩 마진 제거, 화면 바깥으로 아예 나갔을 때만 false 처리
     if (CurrentMouseX < 0.f || CurrentMouseX > ViewportSizeX ||
         CurrentMouseY < 0.f || CurrentMouseY > ViewportSizeY)
     {
@@ -89,26 +97,18 @@ void AGJCharacter::UpdateMouseState()
 
 void AGJCharacter::UpdateCharacterRotation()
 {
-    // ==========================================
-    // 1. 대시(회피) 중에는 시선 처리를 멈춰서 궤적이 휘는 것을 방지
-    // ==========================================
     if (StateComponent && StateComponent->GetState() == ECharacterState::Dodge)
     {
         return;
     }
 
-    // ==========================================
-    // 2. 부드러운 회전을 위한 세팅 (RInterpTo 활용)
-    // ==========================================
-    float DeltaTime = GetWorld()->GetDeltaSeconds(); // 헤더 수정 없이 델타 타임 가져오기
-    float RotationSpeed = 30.f; // [튜닝 포인트] 이 수치를 조절해 회전 속도 결정 (높을수록 빠름)
+    float DeltaTime = GetWorld()->GetDeltaSeconds();
+    float RotationSpeed = 30.f;
 
-    // 마우스가 화면 밖이면 LastValidRotation으로 부드럽게 회전
     if (!bIsMouseInsideViewport)
     {
         if (!GetActorRotation().Equals(LastValidRotation, 0.1f))
         {
-            // [핵심 변경] 순간이동하듯 돌지 않고, 프레임에 맞춰 부드럽게 회전
             FRotator SmoothRotation = FMath::RInterpTo(GetActorRotation(), LastValidRotation, DeltaTime, RotationSpeed);
             SetActorRotation(SmoothRotation);
         }
@@ -139,7 +139,6 @@ void AGJCharacter::UpdateCharacterRotation()
 
             if (!GetActorRotation().Equals(LastValidRotation, 0.1f))
             {
-                // [핵심 변경] 마우스가 가리키는 방향으로 부드럽게 보간하며 회전
                 FRotator SmoothRotation = FMath::RInterpTo(GetActorRotation(), LastValidRotation, DeltaTime, RotationSpeed);
                 SetActorRotation(SmoothRotation);
             }
@@ -149,7 +148,6 @@ void AGJCharacter::UpdateCharacterRotation()
 
 void AGJCharacter::UpdateCameraOffset(float DeltaTime)
 {
-    // [피드백 5 반영] 마우스가 화면 안에 있을 때만 DesiredWorldOffset 갱신
     if (bIsMouseInsideViewport)
     {
         FVector2D ViewportCenter(ViewportSizeX / 2.f, ViewportSizeY / 2.f);
@@ -171,14 +169,11 @@ void AGJCharacter::UpdateCameraOffset(float DeltaTime)
         }
     }
 
-    // 마우스가 화면 밖에 있더라도 VInterpTo는 실행되어, 
-    // 나가는 순간 카메라가 뚝 끊기지 않고 부드럽게 감속하며 정지합니다.
     CurrentWorldOffset = FMath::VInterpTo(CurrentWorldOffset, DesiredWorldOffset, DeltaTime, CameraOffsetInterpSpeed);
 }
 
 void AGJCharacter::ApplyCameraOffset()
 {
-    // [피드백 6 유지] 부모(캐릭터)의 회전과 무관하게 카메라를 월드 기준으로 이동시키기 위한 필수 수학 연산입니다.
     CameraBoom->SetRelativeLocation(GetActorRotation().UnrotateVector(CurrentWorldOffset));
 }
 
@@ -193,18 +188,25 @@ void AGJCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCompone
             EnhancedInput->BindAction(MoveAction, ETriggerEvent::Triggered, this, &AGJCharacter::Move);
         }
 
-        // 회피(Dodge) 키 바인딩 (Started: 키를 누르는 순간 1회 발생)
         if (DodgeAction)
         {
             EnhancedInput->BindAction(DodgeAction, ETriggerEvent::Started, this, &AGJCharacter::PerformDodge);
+        }
+
+        // [신규] 공격 입력 바인딩
+        if (AttackAction)
+        {
+            EnhancedInput->BindAction(AttackAction, ETriggerEvent::Started, this, &AGJCharacter::AttackInputPressed);
         }
     }
 }
 
 void AGJCharacter::Move(const FInputActionValue& Value)
 {
-    MoveInput = Value.Get<FVector2D>();
+    // 공격 중일 때는 이동 차단 (원한다면 제거 가능)
+    if (StateComponent && StateComponent->GetState() == ECharacterState::Attack) return;
 
+    MoveInput = Value.Get<FVector2D>();
     const FVector2D Movement = Value.Get<FVector2D>();
     if (Controller == nullptr) return;
 
@@ -212,139 +214,182 @@ void AGJCharacter::Move(const FInputActionValue& Value)
     AddMovementInput(FVector::RightVector, Movement.X);
 }
 
-void AGJCharacter::PerformDodge()
+// ==========================================
+// [신규] 콤보 공격 구현부
+// ==========================================
+void AGJCharacter::AttackInputPressed()
 {
-    if (MoveInput.IsNearlyZero())
-    {
-        return;
-    }
+    if (!EquippedWeapon || !StateComponent) return;
 
-    // [에러 수정] GetCurrentState -> GetState() 및 null 체크 추가
-    if (!StateComponent || StateComponent->GetState() != ECharacterState::Idle)
-    {
-        return;
-    }
+    // 구르기 중에는 공격 불가
+    if (StateComponent->GetState() == ECharacterState::Dodge) return;
 
-    //----------------------------------------
-    // 입력 → 월드 방향
-    //----------------------------------------
-    FVector WorldDirection(
-        MoveInput.Y,
-        MoveInput.X,
-        0.f);
+    UAnimMontage* WeaponMontage = EquippedWeapon->GetAttackMontage();
+    if (!WeaponMontage) return;
 
-    WorldDirection.Normalize();
+    // 현재 공격 상태가 아니면 1타 시작
+    if (StateComponent->GetState() != ECharacterState::Attack)
+    {
+        StateComponent->SetState(ECharacterState::Attack);
+        CurrentComboCount = 1;
+        bHasNextComboInput = false;
 
-    //----------------------------------------
-    // 월드 → 캐릭터 기준
-    //----------------------------------------
-    FVector Local = GetActorTransform().InverseTransformVectorNoScale(WorldDirection);
-    Local.Normalize();
+        PlayAnimMontage(WeaponMontage);
 
-    //----------------------------------------
-    // 각도 계산
-    //----------------------------------------
-    float Angle = FMath::RadiansToDegrees(FMath::Atan2(Local.Y, Local.X));
-    Angle = FRotator::NormalizeAxis(Angle);
-
-    //----------------------------------------
-    // 판정
-    //----------------------------------------
-    UAnimMontage* Montage = nullptr;
-    FVector FacingDirection = WorldDirection;
-
-    // [에러 수정] DodgeDistance 선언 누락 복구
-    float DodgeDistance = 500.f;
-
-    if (Angle >= -22.5f && Angle < 22.5f)
-    {
-        // Forward
-        Montage = DodgeForwardMontage;
-    }
-    else if (Angle >= 22.5f && Angle < 67.5f)
-    {
-        // Forward Right
-        Montage = DodgeForwardMontage;
-    }
-    else if (Angle >= 67.5f && Angle < 112.5f)
-    {
-        // Right
-        // [로직 수정] 사이드스텝은 현재 바라보는 방향을 유지해야 제대로 우측으로 이동함
-        FacingDirection = GetActorForwardVector();
-        Montage = DodgeRightMontage;
-    }
-    else if (Angle >= 112.5f && Angle < 157.5f)
-    {
-        // Back Right
-        FacingDirection = -WorldDirection;
-        Montage = DodgeBackwardMontage;
-    }
-    else if (Angle >= 157.5f || Angle < -157.5f)
-    {
-        // Back
-        FacingDirection = -WorldDirection;
-        Montage = DodgeBackwardMontage;
-    }
-    else if (Angle >= -157.5f && Angle < -112.5f)
-    {
-        // Back Left
-        FacingDirection = -WorldDirection;
-        Montage = DodgeBackwardMontage;
-    }
-    else if (Angle >= -112.5f && Angle < -67.5f)
-    {
-        // Left
-        // [로직 수정] 사이드스텝은 현재 바라보는 방향을 유지
-        FacingDirection = GetActorForwardVector();
-        Montage = DodgeLeftMontage;
+        // 몽타주 내의 "Attack1" 섹션으로 이동 재생
+        FName SectionName = FName(*FString::Printf(TEXT("Attack%d"), CurrentComboCount));
+        if (WeaponMontage->IsValidSectionName(SectionName))
+        {
+            GetMesh()->GetAnimInstance()->Montage_JumpToSection(SectionName, WeaponMontage);
+        }
     }
     else
     {
-        // Forward Left
-        Montage = DodgeForwardMontage;
+        // 공격 모션 도중 클릭했다면 다음 콤보 예약
+        bHasNextComboInput = true;
+    }
+}
+
+void AGJCharacter::AdvanceCombo()
+{
+    // 예약된 입력이 있고, 무기가 존재할 때
+    if (bHasNextComboInput && EquippedWeapon)
+    {
+        UAnimMontage* WeaponMontage = EquippedWeapon->GetAttackMontage();
+        if (WeaponMontage)
+        {
+            CurrentComboCount++;
+            bHasNextComboInput = false; // 예약 소모
+
+            // Attack2, Attack3 등 다음 섹션 이름 동적 생성
+            FName NextSection = FName(*FString::Printf(TEXT("Attack%d"), CurrentComboCount));
+
+            // 해당 섹션이 존재하면 점프해서 재생 이어나감
+            if (WeaponMontage->IsValidSectionName(NextSection))
+            {
+                GetMesh()->GetAnimInstance()->Montage_JumpToSection(NextSection, WeaponMontage);
+                return; // 성공적으로 콤보가 이어지면 종료
+            }
+        }
     }
 
-    //----------------------------------------
-    // 회전
-    //----------------------------------------
+    // 예약된 입력이 없거나 더 이상 섹션이 없으면 콤보 종료 처리
+    ResetCombo();
+}
+
+void AGJCharacter::ResetCombo()
+{
+    CurrentComboCount = 0;
+    bHasNextComboInput = false;
+
+    if (StateComponent && StateComponent->GetState() == ECharacterState::Attack)
+    {
+        StateComponent->SetState(ECharacterState::Idle);
+    }
+}
+
+void AGJCharacter::PerformFire()
+{
+    if (EquippedWeapon)
+    {
+        // 향후 무기 베이스에 ExecuteAttack() 가상함수를 만들면 형변환 없이 호출 가능합니다.
+        // 현재는 무기 베이스를 Ranged나 Melee로 적절히 캐스팅해서 사용합니다.
+        // ex) RangedWeapon->Fire();
+    }
+}
+
+// ==========================================
+// 기존 로직들
+// ==========================================
+void AGJCharacter::PerformDodge()
+{
+    if (MoveInput.IsNearlyZero()) return;
+    if (!StateComponent || StateComponent->GetState() != ECharacterState::Idle) return;
+
+    FVector WorldDirection(MoveInput.Y, MoveInput.X, 0.f);
+    WorldDirection.Normalize();
+
+    FVector Local = GetActorTransform().InverseTransformVectorNoScale(WorldDirection);
+    Local.Normalize();
+
+    float Angle = FMath::RadiansToDegrees(FMath::Atan2(Local.Y, Local.X));
+    Angle = FRotator::NormalizeAxis(Angle);
+
+    UAnimMontage* Montage = nullptr;
+    FVector FacingDirection = WorldDirection;
+    float DodgeDistance = 500.f;
+
+    if (Angle >= -22.5f && Angle < 22.5f) { Montage = DodgeForwardMontage; }
+    else if (Angle >= 22.5f && Angle < 67.5f) { Montage = DodgeForwardMontage; }
+    else if (Angle >= 67.5f && Angle < 112.5f) { FacingDirection = GetActorForwardVector(); Montage = DodgeRightMontage; }
+    else if (Angle >= 112.5f && Angle < 157.5f) { FacingDirection = -WorldDirection; Montage = DodgeBackwardMontage; }
+    else if (Angle >= 157.5f || Angle < -157.5f) { FacingDirection = -WorldDirection; Montage = DodgeBackwardMontage; }
+    else if (Angle >= -157.5f && Angle < -112.5f) { FacingDirection = -WorldDirection; Montage = DodgeBackwardMontage; }
+    else if (Angle >= -112.5f && Angle < -67.5f) { FacingDirection = GetActorForwardVector(); Montage = DodgeLeftMontage; }
+    else { Montage = DodgeForwardMontage; }
+
     FRotator TargetRotation = FacingDirection.Rotation();
     SetActorRotation(TargetRotation);
-
-    // [핵심 수정] 대시 직후 시선 튀는 현상 방지용 동기화
     LastValidRotation = TargetRotation;
 
-    //----------------------------------------
-    // Motion Warp
-    //----------------------------------------
     if (MotionWarpingComponent)
     {
-        // [에러 수정] TEXT 매크로 대신 FName 명시적 사용
-        MotionWarpingComponent->AddOrUpdateWarpTargetFromLocation(
-            FName("DodgeTarget"),
-            GetActorLocation() + WorldDirection * DodgeDistance);
+        MotionWarpingComponent->AddOrUpdateWarpTargetFromLocation(FName("DodgeTarget"), GetActorLocation() + WorldDirection * DodgeDistance);
     }
 
-    //----------------------------------------
-    // 상태
-    //----------------------------------------
-    // [에러 수정] ECharacterState::Dodging -> ECharacterState::Dodge
     StateComponent->SetState(ECharacterState::Dodge);
-
     PlayAnimMontage(Montage);
 }
 
-// 몽타주가 끝나거나, 다른 애니메이션에 의해 끊겼을 때(Interrupted) 자동 실행됨
-void AGJCharacter::OnDodgeMontageEnded(UAnimMontage* Montage, bool bInterrupted)
+void AGJCharacter::OnMontageEndedEvent(UAnimMontage* Montage, bool bInterrupted)
 {
-    if (Montage == DodgeForwardMontage ||
-        Montage == DodgeBackwardMontage ||
-        Montage == DodgeLeftMontage ||
-        Montage == DodgeRightMontage)
+    if (StateComponent)
     {
-        // 애니메이션 종료 시 상태를 되돌리는 로직
-        if (StateComponent)
+        // 1. 회피 몽타주가 끝났을 때
+        if (Montage == DodgeForwardMontage || Montage == DodgeBackwardMontage ||
+            Montage == DodgeLeftMontage || Montage == DodgeRightMontage)
         {
-            StateComponent->SetState(ECharacterState::Idle);
+            if (StateComponent->GetState() == ECharacterState::Dodge)
+            {
+                StateComponent->SetState(ECharacterState::Idle);
+            }
+        }
+        // 2. 무기 공격 몽타주가 끝났을 때 (또는 끊겼을 때)
+        else if (EquippedWeapon && Montage == EquippedWeapon->GetAttackMontage())
+        {
+            ResetCombo();
+        }
+    }
+}
+
+void AGJCharacter::UpdateCharacterStat(int32 NewLevel)
+{
+    CurrentLevel = NewLevel;
+    if (CharacterStatTable)
+    {
+        FString RowName = FString::FromInt(CurrentLevel);
+        FCharacterStat* RowData = CharacterStatTable->FindRow<FCharacterStat>(FName(*RowName), TEXT("UpdateCharacterStat"));
+
+        if (RowData)
+        {
+            CurrentCharacterStat = *RowData;
+        }
+    }
+}
+
+void AGJCharacter::EquipWeapon()
+{
+    if (DefaultWeaponClass)
+    {
+        FActorSpawnParameters SpawnParams;
+        SpawnParams.Owner = this;
+        SpawnParams.Instigator = this;
+
+        EquippedWeapon = GetWorld()->SpawnActor<AGJWeaponBase>(DefaultWeaponClass, GetActorLocation(), GetActorRotation(), SpawnParams);
+
+        if (EquippedWeapon)
+        {
+            EquippedWeapon->AttachToComponent(GetMesh(), FAttachmentTransformRules::SnapToTargetNotIncludingScale, FName(TEXT("WeaponSocket")));
         }
     }
 }

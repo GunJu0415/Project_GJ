@@ -2,14 +2,17 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Character.h"
+#include "AbilitySystemInterface.h" // GAS 인터페이스 상속용
 #include "GJBaseCharacter.generated.h"
 
+// 컴파일 속도 향상 및 순환 참조 방지를 위한 전방 선언
 class UCharacterStateComponent;
 class UMotionWarpingComponent;
 class UAbilitySystemComponent;
 
-UCLASS()
-class PROJECT_GJ_API AGJBaseCharacter : public ACharacter
+// 베이스 클래스이므로 레벨에 직접 스폰되지 않도록 Abstract 키워드를 추가하는 것이 좋습니다.
+UCLASS(Abstract)
+class PROJECT_GJ_API AGJBaseCharacter : public ACharacter, public IAbilitySystemInterface
 {
     GENERATED_BODY()
 
@@ -19,18 +22,23 @@ public:
 protected:
     virtual void BeginPlay() override;
 
-public:    
+public:
     virtual void Tick(float DeltaTime) override;
 
-    // ==========================================
-    // 플레이어와 적이 공통으로 사용하는 컴포넌트
-    // ==========================================
+    // --------------------------------------------------
+    // Components
+    // --------------------------------------------------
+
+    // 상태 관리 컴포넌트
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
     UCharacterStateComponent* StateComponent;
 
+    // 모션 워핑 컴포넌트
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
     UMotionWarpingComponent* MotionWarpingComponent;
 
-    // 향후 GAS(어빌리티 시스템) 도입 시 사용할 공통 인터페이스
-    virtual UAbilitySystemComponent* GetAbilitySystemComponent() const;
+    // --------------------------------------------------
+    // GAS (Gameplay Ability System) 인터페이스 구현
+    // --------------------------------------------------
+    virtual UAbilitySystemComponent* GetAbilitySystemComponent() const override;
 };

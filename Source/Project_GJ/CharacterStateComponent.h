@@ -18,7 +18,8 @@ enum class ECharacterState : uint8
 	Dead,
 	Reloading,
 	Dashing,
-	Dodge
+	Dodge,
+	Attack 
 };
 
 // 2. 상태가 변할 때 알림을 뿌려줄 델리게이트 선언

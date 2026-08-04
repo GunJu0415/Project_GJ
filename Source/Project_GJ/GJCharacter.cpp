@@ -31,10 +31,6 @@ AGJCharacter::AGJCharacter()
     TopDownCameraComponent->SetupAttachment(CameraBoom);
     TopDownCameraComponent->bUsePawnControlRotation = false;
 
-    // 상태 컴포넌트 생성 및 부착
-    StateComponent = CreateDefaultSubobject<UCharacterStateComponent>(TEXT("StateComponent"));
-    // 모션 워핑 컴포넌트 생성
-    MotionWarpingComponent = CreateDefaultSubobject<UMotionWarpingComponent>(TEXT("MotionWarpingComponent"));
 }
 
 void AGJCharacter::BeginPlay()
@@ -105,7 +101,7 @@ void AGJCharacter::UpdateCharacterRotation()
     // 2. 부드러운 회전을 위한 세팅 (RInterpTo 활용)
     // ==========================================
     float DeltaTime = GetWorld()->GetDeltaSeconds(); // 헤더 수정 없이 델타 타임 가져오기
-    float RotationSpeed = 45.f; // [튜닝 포인트] 이 수치를 조절해 회전 속도 결정 (높을수록 빠름)
+    float RotationSpeed = 30.f; // [튜닝 포인트] 이 수치를 조절해 회전 속도 결정 (높을수록 빠름)
 
     // 마우스가 화면 밖이면 LastValidRotation으로 부드럽게 회전
     if (!bIsMouseInsideViewport)
@@ -223,111 +219,115 @@ void AGJCharacter::PerformDodge()
         return;
     }
 
+    // [에러 수정] GetCurrentState -> GetState() 및 null 체크 추가
     if (!StateComponent || StateComponent->GetState() != ECharacterState::Idle)
     {
         return;
     }
 
-    FVector2D Input = MoveInput.GetSafeNormal();
-
-    //---------------------------------------
-    // MoveInput -> 월드 방향
-    //---------------------------------------
+    //----------------------------------------
+    // 입력 → 월드 방향
+    //----------------------------------------
     FVector WorldDirection(
-        Input.Y,
-        Input.X,
+        MoveInput.Y,
+        MoveInput.X,
         0.f);
 
     WorldDirection.Normalize();
 
-    //---------------------------------------
-    // MoveInput -> 애니메이션 방향 판정 (올바른 축 비교)
-    //---------------------------------------
-    UAnimMontage* Montage = nullptr;
-    float DodgeDistance = 500.f;
-    const float ForwardBackwardRatio = 1.2f;
+    //----------------------------------------
+    // 월드 → 캐릭터 기준
+    //----------------------------------------
+    FVector Local = GetActorTransform().InverseTransformVectorNoScale(WorldDirection);
+    Local.Normalize();
 
-    // 앞뒤(Input.Y)가 좌우(Input.X)보다 우세한가?
-    if (FMath::Abs(Input.Y) * ForwardBackwardRatio >= FMath::Abs(Input.X))
+    //----------------------------------------
+    // 각도 계산
+    //----------------------------------------
+    float Angle = FMath::RadiansToDegrees(FMath::Atan2(Local.Y, Local.X));
+    Angle = FRotator::NormalizeAxis(Angle);
+
+    //----------------------------------------
+    // 판정
+    //----------------------------------------
+    UAnimMontage* Montage = nullptr;
+    FVector FacingDirection = WorldDirection;
+
+    // [에러 수정] DodgeDistance 선언 누락 복구
+    float DodgeDistance = 500.f;
+
+    if (Angle >= -22.5f && Angle < 22.5f)
     {
-        if (Input.Y > 0.f)
-        {
-            DodgeType = EDodgeType::Forward;
-            Montage = DodgeForwardMontage;
-        }
-        else
-        {
-            DodgeType = EDodgeType::Backward;
-            Montage = DodgeBackwardMontage;
-        }
+        // Forward
+        Montage = DodgeForwardMontage;
+    }
+    else if (Angle >= 22.5f && Angle < 67.5f)
+    {
+        // Forward Right
+        Montage = DodgeForwardMontage;
+    }
+    else if (Angle >= 67.5f && Angle < 112.5f)
+    {
+        // Right
+        // [로직 수정] 사이드스텝은 현재 바라보는 방향을 유지해야 제대로 우측으로 이동함
+        FacingDirection = GetActorForwardVector();
+        Montage = DodgeRightMontage;
+    }
+    else if (Angle >= 112.5f && Angle < 157.5f)
+    {
+        // Back Right
+        FacingDirection = -WorldDirection;
+        Montage = DodgeBackwardMontage;
+    }
+    else if (Angle >= 157.5f || Angle < -157.5f)
+    {
+        // Back
+        FacingDirection = -WorldDirection;
+        Montage = DodgeBackwardMontage;
+    }
+    else if (Angle >= -157.5f && Angle < -112.5f)
+    {
+        // Back Left
+        FacingDirection = -WorldDirection;
+        Montage = DodgeBackwardMontage;
+    }
+    else if (Angle >= -112.5f && Angle < -67.5f)
+    {
+        // Left
+        // [로직 수정] 사이드스텝은 현재 바라보는 방향을 유지
+        FacingDirection = GetActorForwardVector();
+        Montage = DodgeLeftMontage;
     }
     else
     {
-        if (Input.X > 0.f)
-        {
-            DodgeType = EDodgeType::Right;
-            Montage = DodgeRightMontage;
-        }
-        else
-        {
-            DodgeType = EDodgeType::Left;
-            Montage = DodgeLeftMontage;
-        }
+        // Forward Left
+        Montage = DodgeForwardMontage;
     }
 
-    //---------------------------------------
-    // 회전 및 이동 방향 설정 (회피 종료 후 시선 튀는 현상 방지 포함)
-    //---------------------------------------
-    FRotator TargetRotation = GetActorRotation();
+    //----------------------------------------
+    // 회전
+    //----------------------------------------
+    FRotator TargetRotation = FacingDirection.Rotation();
+    SetActorRotation(TargetRotation);
 
-    switch (DodgeType)
-    {
-    case EDodgeType::Forward:
-        TargetRotation = WorldDirection.Rotation();
-        SetActorRotation(TargetRotation);
-        break;
-
-    case EDodgeType::Backward:
-        TargetRotation = (-WorldDirection).Rotation();
-        SetActorRotation(TargetRotation);
-        // 뒷점프 시 뒤로 밀려나도록 월드 방향 반전
-        WorldDirection = WorldDirection;
-        break;
-
-    case EDodgeType::Left:
-        // 캐릭터의 현재 시선 기준 좌측 방향 유지 (시선 튐 방지)
-        TargetRotation = GetActorRotation();
-        WorldDirection = -GetActorRightVector();
-        break;
-
-    case EDodgeType::Right:
-        // 캐릭터의 현재 시선 기준 우측 방향 유지 (시선 튐 방지)
-        TargetRotation = GetActorRotation();
-        WorldDirection = GetActorRightVector();
-        break;
-    }
-
-    // 회피 중에 시선이 마우스로 튀지 않도록 LastValidRotation도 함께 동기화
+    // [핵심 수정] 대시 직후 시선 튀는 현상 방지용 동기화
     LastValidRotation = TargetRotation;
 
-    //---------------------------------------
+    //----------------------------------------
     // Motion Warp
-    //---------------------------------------
+    //----------------------------------------
     if (MotionWarpingComponent)
     {
-        FVector WarpTarget =
-            GetActorLocation() +
-            WorldDirection * DodgeDistance;
-
-        MotionWarpingComponent->AddOrUpdateWarpTargetFromLocationAndRotation(
-            TEXT("DodgeTarget"),
-            WarpTarget,
-            TargetRotation);
+        // [에러 수정] TEXT 매크로 대신 FName 명시적 사용
+        MotionWarpingComponent->AddOrUpdateWarpTargetFromLocation(
+            FName("DodgeTarget"),
+            GetActorLocation() + WorldDirection * DodgeDistance);
     }
 
-    //---------------------------------------
-    // 상태 변경 및 재생
-    //---------------------------------------
+    //----------------------------------------
+    // 상태
+    //----------------------------------------
+    // [에러 수정] ECharacterState::Dodging -> ECharacterState::Dodge
     StateComponent->SetState(ECharacterState::Dodge);
 
     PlayAnimMontage(Montage);
@@ -347,9 +347,4 @@ void AGJCharacter::OnDodgeMontageEnded(UAnimMontage* Montage, bool bInterrupted)
             StateComponent->SetState(ECharacterState::Idle);
         }
     }
-}
-
-UAbilitySystemComponent* AGJCharacter::GetAbilitySystemComponent() const
-{
-    return nullptr;
 }

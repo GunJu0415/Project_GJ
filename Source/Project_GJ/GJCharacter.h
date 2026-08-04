@@ -2,7 +2,8 @@
 
 #include "CoreMinimal.h"
 #include "MotionWarpingComponent.h"
-#include "GameFramework/Character.h"
+#include "GJBaseCharacter.h"
+#include "InputActionValue.h"
 #include "GJCharacter.generated.h"
 
 class USpringArmComponent;
@@ -26,7 +27,7 @@ enum class EDodgeType
 };
 
 UCLASS()
-class PROJECT_GJ_API AGJCharacter : public ACharacter
+class PROJECT_GJ_API AGJCharacter : public AGJBaseCharacter
 {
     GENERATED_BODY()
 
@@ -35,14 +36,10 @@ public:
 
 protected:
     virtual void BeginPlay() override;
-    // 모션 워핑 컴포넌트 선언
-    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
-    class UMotionWarpingComponent* MotionWarpingComponent;
 
 public:
     virtual void Tick(float DeltaTime) override;
     virtual void SetupPlayerInputComponent(UInputComponent* PlayerInputComponent) override;
-    UAbilitySystemComponent* GetAbilitySystemComponent() const;
 
     UPROPERTY(BlueprintReadOnly, Category = "Animation")
     FVector2D MoveInput;
@@ -116,9 +113,6 @@ protected:
     UAnimMontage* DodgeLeftMontage;
     UPROPERTY(EditDefaultsOnly, Category = "Animation")
     UAnimMontage* DodgeBackwardMontage;
-
-    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
-    UCharacterStateComponent* StateComponent;
 
     // 3. 구르기 액션 함수 선언
     void PerformDodge();

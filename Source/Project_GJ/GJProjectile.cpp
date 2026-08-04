@@ -47,7 +47,7 @@ void AGJProjectile::FireInDirection(const FVector& ShootDirection)
     SetActorTickEnabled(true);
 
     // 날아가기 시작
-    ProjectileMovement->SetVelocityInLocalSpace(ShootDirection * ProjectileMovement->InitialSpeed);
+    ProjectileMovement->Velocity = ShootDirection * ProjectileMovement->InitialSpeed;
     ProjectileMovement->Activate();
 }
 
@@ -61,6 +61,7 @@ void AGJProjectile::Deactivate()
     SetActorTickEnabled(false);
     ProjectileMovement->Deactivate();
     ProjectileMovement->Velocity = FVector::ZeroVector;
+
 }
 
 void AGJProjectile::OnHit(UPrimitiveComponent* HitComp, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit)

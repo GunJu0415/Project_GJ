@@ -10,6 +10,7 @@
 #include "GameFramework/SpringArmComponent.h"
 #include "DrawDebugHelpers.h" 
 #include "Engine/DataTable.h" 
+#include "GJWeapon_Ranged.h"
 #include "GJWeaponBase.h"      
 
 AGJCharacter::AGJCharacter()
@@ -204,7 +205,7 @@ void AGJCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCompone
 void AGJCharacter::Move(const FInputActionValue& Value)
 {
     // 공격 중일 때는 이동 차단 (원한다면 제거 가능)
-    if (StateComponent && StateComponent->GetState() == ECharacterState::Attack) return;
+    //if (StateComponent && StateComponent->GetState() == ECharacterState::Attack) return;
 
     MoveInput = Value.Get<FVector2D>();
     const FVector2D Movement = Value.Get<FVector2D>();
@@ -219,13 +220,29 @@ void AGJCharacter::Move(const FInputActionValue& Value)
 // ==========================================
 void AGJCharacter::AttackInputPressed()
 {
-    if (!EquippedWeapon || !StateComponent) return;
+    // 1. 입력 바인딩 확인 (클릭 시 노란색 글씨가 뜨는지 확인)
+    if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Yellow, TEXT("1. Attack Input Received!"));
 
-    // 구르기 중에는 공격 불가
+    if (!EquippedWeapon)
+    {
+        // 무기 스폰 또는 장착 실패
+        if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, TEXT("ERROR: EquippedWeapon is NULL!"));
+        return;
+    }
+
+    if (!StateComponent) return;
     if (StateComponent->GetState() == ECharacterState::Dodge) return;
 
     UAnimMontage* WeaponMontage = EquippedWeapon->GetAttackMontage();
-    if (!WeaponMontage) return;
+    if (!WeaponMontage)
+    {
+        // 무기 BP나 데이터 테이블에 몽타주 에셋 할당이 안 됨
+        if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, TEXT("ERROR: WeaponMontage is NULL! Check Weapon BP or DataTable."));
+        return;
+    }
+
+    // 2. 최종 재생 단계 도달 확인 (초록색 글씨가 뜨면 코드상으로는 정상 재생된 것임)
+    if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Green, TEXT("2. Playing Montage Success!"));
 
     // 현재 공격 상태가 아니면 1타 시작
     if (StateComponent->GetState() != ECharacterState::Attack)
@@ -236,7 +253,6 @@ void AGJCharacter::AttackInputPressed()
 
         PlayAnimMontage(WeaponMontage);
 
-        // 몽타주 내의 "Attack1" 섹션으로 이동 재생
         FName SectionName = FName(*FString::Printf(TEXT("Attack%d"), CurrentComboCount));
         if (WeaponMontage->IsValidSectionName(SectionName))
         {
@@ -245,7 +261,6 @@ void AGJCharacter::AttackInputPressed()
     }
     else
     {
-        // 공격 모션 도중 클릭했다면 다음 콤보 예약
         bHasNextComboInput = true;
     }
 }
@@ -290,11 +305,22 @@ void AGJCharacter::ResetCombo()
 
 void AGJCharacter::PerformFire()
 {
+    GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Blue, TEXT("Perform Come"));
+
     if (EquippedWeapon)
     {
-        // 향후 무기 베이스에 ExecuteAttack() 가상함수를 만들면 형변환 없이 호출 가능합니다.
-        // 현재는 무기 베이스를 Ranged나 Melee로 적절히 캐스팅해서 사용합니다.
-        // ex) RangedWeapon->Fire();
+        // 1. 장착된 무기(GJWeaponBase)를 원거리 무기(GJWeapon_Ranged)로 형변환합니다.
+        AGJWeaponBase* RangedWeapon = Cast<AGJWeaponBase>(EquippedWeapon);
+
+        if (RangedWeapon)
+        {
+            // 2. 드디어 무기의 사격 함수를 호출합니다!
+            RangedWeapon->Fire();
+        }
+        else
+        {
+            UE_LOG(LogTemp, Error, TEXT("EquippedWeapon is not a RangedWeapon!"));
+        }
     }
 }
 

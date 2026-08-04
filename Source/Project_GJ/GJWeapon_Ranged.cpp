@@ -1,4 +1,6 @@
 #include "GJWeapon_Ranged.h"
+#include "Engine/World.h"
+#include "Components/MeshComponent.h" // 무기 메시에 따라 Static/Skeletal 포함
 #include "GJProjectile.h"
 
 AGJWeapon_Ranged::AGJWeapon_Ranged()
@@ -47,26 +49,36 @@ AGJProjectile* AGJWeapon_Ranged::GetAvailableProjectile()
     return nullptr;
 }
 
-void AGJWeapon_Ranged::FireWeapon()
+void AGJWeapon_Ranged::Fire()
 {
-    // 캐릭터가 바라보는 방향 (또는 마우스 타겟팅 방향)
+    // 디버깅용 화면 출력 (노란색 텍스트, 3초 유지)
+    if (GEngine)
+    {
+        GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Yellow, TEXT("Pooling Fire function called!"));
+    }
+
+    // 1. 발사 방향 세팅
     FVector ShootDirection = GetInstigator()->GetActorForwardVector();
 
-    // 무기 메시에 Muzzle(총구) 소켓이 있다면 그 위치를, 없다면 무기 위치를 사용
-    FVector MuzzleLocation = WeaponMesh->DoesSocketExist(FName("Muzzle")) ?
-        WeaponMesh->GetSocketLocation(FName("Muzzle")) : GetActorLocation();
+    // 2. 총구 위치 세팅 (소켓 이름은 블루프린트 설정과 반드시 일치해야 합니다!)
+    FVector MuzzleLocation = WeaponMesh->DoesSocketExist(FName("MuzzleSocket")) ?
+        WeaponMesh->GetSocketLocation(FName("MuzzleSocket")) : GetActorLocation();
 
-    // 1. 풀에서 총알 하나 꺼내기
+    // 3. 풀에서 총알 하나 꺼내기
     AGJProjectile* ProjectileToFire = GetAvailableProjectile();
 
     if (ProjectileToFire)
     {
-        // 2. 총구 위치와 쏘는 방향 세팅
+        // 4. 총구 위치와 쏘는 방향 세팅 및 발사
         ProjectileToFire->SetActorLocationAndRotation(MuzzleLocation, ShootDirection.Rotation());
-
-        // 3. 발사!
         ProjectileToFire->FireInDirection(ShootDirection);
-
-        // [선택 사항] 격발 사운드 재생, 총구 이펙트(Muzzle Flash) 생성 로직 추가 가능
+    }
+    else
+    {
+        // 풀에 남은 총알이 없을 때 화면 출력 (빨간색 텍스트, 3초 유지)
+        if (GEngine)
+        {
+            GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Red, TEXT("Failed to get projectile from pool!"));
+        }
     }
 }

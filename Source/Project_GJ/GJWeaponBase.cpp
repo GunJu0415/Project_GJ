@@ -44,3 +44,8 @@ void AGJWeaponBase::OnConstruction(const FTransform& Transform)
         }
     }
 }
+
+void AGJWeaponBase::Fire()
+{
+
+}

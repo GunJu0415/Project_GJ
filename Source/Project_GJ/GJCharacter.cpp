@@ -8,10 +8,10 @@
 #include "CharacterStateComponent.h"
 #include "Animation/AnimInstance.h"
 #include "GameFramework/SpringArmComponent.h"
-#include "DrawDebugHelpers.h" 
-#include "Engine/DataTable.h" 
+#include "DrawDebugHelpers.h"
+#include "Engine/DataTable.h"
 #include "GJWeapon_Ranged.h"
-#include "GJWeaponBase.h"      
+#include "GJWeaponBase.h"
 
 AGJCharacter::AGJCharacter()
 {
@@ -36,7 +36,7 @@ AGJCharacter::AGJCharacter()
 
     CurrentLevel = 1;
 
-    // [½Å±Ô] ÄŞº¸ º¯¼ö ÃÊ±âÈ­
+    // [ì‹ ê·œ] ì½¤ë³´ ë³€ìˆ˜ ì´ˆê¸°í™”
     CurrentComboCount = 0;
     bHasNextComboInput = false;
 }
@@ -61,7 +61,7 @@ void AGJCharacter::BeginPlay()
 
     if (UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance())
     {
-        // [¼öÁ¤] ¸ùÅ¸ÁÖ Á¾·á Äİ¹é ¿¬°á
+        // [ìˆ˜ì •] ëª½íƒ€ì£¼ ì¢…ë£Œ ì½œë°± ì—°ê²°
         AnimInstance->OnMontageEnded.AddDynamic(this, &AGJCharacter::OnMontageEndedEvent);
     }
 
@@ -194,7 +194,7 @@ void AGJCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCompone
             EnhancedInput->BindAction(DodgeAction, ETriggerEvent::Started, this, &AGJCharacter::PerformDodge);
         }
 
-        // [½Å±Ô] °ø°İ ÀÔ·Â ¹ÙÀÎµù
+        // [ì‹ ê·œ] ê³µê²© ì…ë ¥ ë°”ì¸ë”©
         if (AttackAction)
         {
             EnhancedInput->BindAction(AttackAction, ETriggerEvent::Started, this, &AGJCharacter::AttackInputPressed);
@@ -204,7 +204,7 @@ void AGJCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCompone
 
 void AGJCharacter::Move(const FInputActionValue& Value)
 {
-    // °ø°İ ÁßÀÏ ¶§´Â ÀÌµ¿ Â÷´Ü (¿øÇÑ´Ù¸é Á¦°Å °¡´É)
+    // ê³µê²© ì¤‘ì¼ ë•ŒëŠ” ì´ë™ ì°¨ë‹¨ (ì›í•œë‹¤ë©´ ì œê±° ê°€ëŠ¥)
     //if (StateComponent && StateComponent->GetState() == ECharacterState::Attack) return;
 
     MoveInput = Value.Get<FVector2D>();
@@ -216,17 +216,17 @@ void AGJCharacter::Move(const FInputActionValue& Value)
 }
 
 // ==========================================
-// [½Å±Ô] ÄŞº¸ °ø°İ ±¸ÇöºÎ
+// [ì‹ ê·œ] ì½¤ë³´ ê³µê²© êµ¬í˜„ë¶€
 // ==========================================
 void AGJCharacter::AttackInputPressed()
 {
-    // 1. ÀÔ·Â ¹ÙÀÎµù È®ÀÎ (Å¬¸¯ ½Ã ³ë¶õ»ö ±Û¾¾°¡ ¶ß´ÂÁö È®ÀÎ)
+    // 1. ì…ë ¥ ë°”ì¸ë”© í™•ì¸ (í´ë¦­ ì‹œ ë…¸ë€ìƒ‰ ê¸€ì”¨ê°€ ëœ¨ëŠ”ì§€ í™•ì¸)
     if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Yellow, TEXT("1. Attack Input Received!"));
 
     if (!EquippedWeapon)
     {
-        // ¹«±â ½ºÆù ¶Ç´Â ÀåÂø ½ÇÆĞ
-        if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, TEXT("ERROR: EquippedWeapon is NULL!"));
+        // ë¬´ê¸° ìŠ¤í° ë˜ëŠ” ì¥ì°© ì‹¤íŒ¨ - ì—¬ê¸°ì„œ ë°˜í™˜ ì•ˆ í•˜ë©´ ë°”ë¡œ ì•„ë˜ì—ì„œ EquippedWeaponì„ ë„ ìƒíƒœë¡œ ì°¸ì¡°í•´ì„œ í¬ë˜ì‹œë‚¨
+        //if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, TEXT("ERROR: EquippedWeapon is NULL!"));
         return;
     }
 
@@ -236,15 +236,15 @@ void AGJCharacter::AttackInputPressed()
     UAnimMontage* WeaponMontage = EquippedWeapon->GetAttackMontage();
     if (!WeaponMontage)
     {
-        // ¹«±â BP³ª µ¥ÀÌÅÍ Å×ÀÌºí¿¡ ¸ùÅ¸ÁÖ ¿¡¼Â ÇÒ´çÀÌ ¾È µÊ
-        if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, TEXT("ERROR: WeaponMontage is NULL! Check Weapon BP or DataTable."));
+        // ë¬´ê¸° BPë‚˜ ë°ì´í„° í…Œì´ë¸”ì— ëª½íƒ€ì£¼ ì—ì…‹ í• ë‹¹ì´ ì•ˆ ë¨
+        //if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, TEXT("ERROR: WeaponMontage is NULL! Check Weapon BP or DataTable."));
         return;
     }
 
-    // 2. ÃÖÁ¾ Àç»ı ´Ü°è µµ´Ş È®ÀÎ (ÃÊ·Ï»ö ±Û¾¾°¡ ¶ß¸é ÄÚµå»óÀ¸·Î´Â Á¤»ó Àç»ıµÈ °ÍÀÓ)
-    if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Green, TEXT("2. Playing Montage Success!"));
+    // 2. ìµœì¢… ì¬ìƒ ë‹¨ê³„ ë„ë‹¬ í™•ì¸ (ì´ˆë¡ìƒ‰ ê¸€ì”¨ê°€ ëœ¨ë©´ ì½”ë“œìƒìœ¼ë¡œëŠ” ì •ìƒ ì¬ìƒëœ ê²ƒì„)
+    //if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Green, TEXT("2. Playing Montage Success!"));
 
-    // ÇöÀç °ø°İ »óÅÂ°¡ ¾Æ´Ï¸é 1Å¸ ½ÃÀÛ
+    // í˜„ì¬ ê³µê²© ìƒíƒœê°€ ì•„ë‹ˆë©´ 1íƒ€ ì‹œì‘
     if (StateComponent->GetState() != ECharacterState::Attack)
     {
         StateComponent->SetState(ECharacterState::Attack);
@@ -267,28 +267,28 @@ void AGJCharacter::AttackInputPressed()
 
 void AGJCharacter::AdvanceCombo()
 {
-    // ¿¹¾àµÈ ÀÔ·ÂÀÌ ÀÖ°í, ¹«±â°¡ Á¸ÀçÇÒ ¶§
+    // ì˜ˆì•½ëœ ì…ë ¥ì´ ìˆê³ , ë¬´ê¸°ê°€ ì¡´ì¬í•  ë•Œ
     if (bHasNextComboInput && EquippedWeapon)
     {
         UAnimMontage* WeaponMontage = EquippedWeapon->GetAttackMontage();
         if (WeaponMontage)
         {
             CurrentComboCount++;
-            bHasNextComboInput = false; // ¿¹¾à ¼Ò¸ğ
+            bHasNextComboInput = false; // ì˜ˆì•½ ì†Œëª¨
 
-            // Attack2, Attack3 µî ´ÙÀ½ ¼½¼Ç ÀÌ¸§ µ¿Àû »ı¼º
+            // Attack2, Attack3 ë“± ë‹¤ìŒ ì„¹ì…˜ ì´ë¦„ ë™ì  ìƒì„±
             FName NextSection = FName(*FString::Printf(TEXT("Attack%d"), CurrentComboCount));
 
-            // ÇØ´ç ¼½¼ÇÀÌ Á¸ÀçÇÏ¸é Á¡ÇÁÇØ¼­ Àç»ı ÀÌ¾î³ª°¨
+            // í•´ë‹¹ ì„¹ì…˜ì´ ì¡´ì¬í•˜ë©´ ì í”„í•´ì„œ ì¬ìƒ ì´ì–´ë‚˜ê°
             if (WeaponMontage->IsValidSectionName(NextSection))
             {
                 GetMesh()->GetAnimInstance()->Montage_JumpToSection(NextSection, WeaponMontage);
-                return; // ¼º°øÀûÀ¸·Î ÄŞº¸°¡ ÀÌ¾îÁö¸é Á¾·á
+                return; // ì„±ê³µì ìœ¼ë¡œ ì½¤ë³´ê°€ ì´ì–´ì§€ë©´ ì¢…ë£Œ
             }
         }
     }
 
-    // ¿¹¾àµÈ ÀÔ·ÂÀÌ ¾ø°Å³ª ´õ ÀÌ»ó ¼½¼ÇÀÌ ¾øÀ¸¸é ÄŞº¸ Á¾·á Ã³¸®
+    // ì˜ˆì•½ëœ ì…ë ¥ì´ ì—†ê±°ë‚˜ ë” ì´ìƒ ì„¹ì…˜ì´ ì—†ìœ¼ë©´ ì½¤ë³´ ì¢…ë£Œ ì²˜ë¦¬
     ResetCombo();
 }
 
@@ -309,12 +309,12 @@ void AGJCharacter::PerformFire()
 
     if (EquippedWeapon)
     {
-        // 1. ÀåÂøµÈ ¹«±â(GJWeaponBase)¸¦ ¿ø°Å¸® ¹«±â(GJWeapon_Ranged)·Î Çüº¯È¯ÇÕ´Ï´Ù.
+        // 1. ì¥ì°©ëœ ë¬´ê¸°(GJWeaponBase)ë¥¼ ì›ê±°ë¦¬ ë¬´ê¸°(GJWeapon_Ranged)ë¡œ í˜•ë³€í™˜í•©ë‹ˆë‹¤.
         AGJWeaponBase* RangedWeapon = Cast<AGJWeaponBase>(EquippedWeapon);
 
         if (RangedWeapon)
         {
-            // 2. µåµğ¾î ¹«±âÀÇ »ç°İ ÇÔ¼ö¸¦ È£ÃâÇÕ´Ï´Ù!
+            // 2. ë“œë””ì–´ ë¬´ê¸°ì˜ ì‚¬ê²© í•¨ìˆ˜ë¥¼ í˜¸ì¶œí•©ë‹ˆë‹¤!
             RangedWeapon->Fire();
         }
         else
@@ -325,7 +325,7 @@ void AGJCharacter::PerformFire()
 }
 
 // ==========================================
-// ±âÁ¸ ·ÎÁ÷µé
+// ê¸°ì¡´ ë¡œì§ë“¤
 // ==========================================
 void AGJCharacter::PerformDodge()
 {
@@ -371,7 +371,7 @@ void AGJCharacter::OnMontageEndedEvent(UAnimMontage* Montage, bool bInterrupted)
 {
     if (StateComponent)
     {
-        // 1. È¸ÇÇ ¸ùÅ¸ÁÖ°¡ ³¡³µÀ» ¶§
+        // 1. íšŒí”¼ ëª½íƒ€ì£¼ê°€ ëë‚¬ì„ ë•Œ
         if (Montage == DodgeForwardMontage || Montage == DodgeBackwardMontage ||
             Montage == DodgeLeftMontage || Montage == DodgeRightMontage)
         {
@@ -380,7 +380,7 @@ void AGJCharacter::OnMontageEndedEvent(UAnimMontage* Montage, bool bInterrupted)
                 StateComponent->SetState(ECharacterState::Idle);
             }
         }
-        // 2. ¹«±â °ø°İ ¸ùÅ¸ÁÖ°¡ ³¡³µÀ» ¶§ (¶Ç´Â ²÷°åÀ» ¶§)
+        // 2. ë¬´ê¸° ê³µê²© ëª½íƒ€ì£¼ê°€ ëë‚¬ì„ ë•Œ (ë˜ëŠ” ëŠê²¼ì„ ë•Œ)
         else if (EquippedWeapon && Montage == EquippedWeapon->GetAttackMontage())
         {
             ResetCombo();
@@ -399,6 +399,9 @@ void AGJCharacter::UpdateCharacterStat(int32 NewLevel)
         if (RowData)
         {
             CurrentCharacterStat = *RowData;
+
+            MaxHP = CurrentCharacterStat.MaxHP;
+            CurrentHP = MaxHP;
         }
     }
 }

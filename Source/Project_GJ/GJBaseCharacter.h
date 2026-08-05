@@ -2,15 +2,17 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Character.h"
-#include "AbilitySystemInterface.h" // GAS ÀÎÅÍÆäÀÌ½º »ó¼Ó¿ë
+#include "AbilitySystemInterface.h" // GAS ì¸í„°í˜ì´ìŠ¤ ìƒì†ìš©
 #include "GJBaseCharacter.generated.h"
 
-// ÄÄÆÄÀÏ ¼Óµµ Çâ»ó ¹× ¼øÈ¯ ÂüÁ¶ ¹æÁö¸¦ À§ÇÑ Àü¹æ ¼±¾ğ
+// ì»´íŒŒì¼ ì†ë„ í–¥ìƒ ë° ìˆœí™˜ ì°¸ì¡° ë°©ì§€ë¥¼ ìœ„í•œ ì „ë°© ì„ ì–¸
 class UCharacterStateComponent;
 class UMotionWarpingComponent;
 class UAbilitySystemComponent;
 
-// º£ÀÌ½º Å¬·¡½ºÀÌ¹Ç·Î ·¹º§¿¡ Á÷Á¢ ½ºÆùµÇÁö ¾Êµµ·Ï Abstract Å°¿öµå¸¦ Ãß°¡ÇÏ´Â °ÍÀÌ ÁÁ½À´Ï´Ù.
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnDamagedSignature, float, DamageAmount, AActor*, DamageCauser);
+
+// ë² ì´ìŠ¤ í´ë˜ìŠ¤ì´ë¯€ë¡œ ë ˆë²¨ì— ì§ì ‘ ìŠ¤í°ë˜ì§€ ì•Šë„ë¡ Abstract í‚¤ì›Œë“œë¥¼ ì¶”ê°€í•˜ëŠ” ê²ƒì´ ì¢‹ìŠµë‹ˆë‹¤.
 UCLASS(Abstract)
 class PROJECT_GJ_API AGJBaseCharacter : public ACharacter, public IAbilitySystemInterface
 {
@@ -29,16 +31,40 @@ public:
     // Components
     // --------------------------------------------------
 
-    // »óÅÂ °ü¸® ÄÄÆ÷³ÍÆ®
+    // ìƒíƒœ ê´€ë¦¬ ì»´í¬ë„ŒíŠ¸
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
     UCharacterStateComponent* StateComponent;
 
-    // ¸ğ¼Ç ¿öÇÎ ÄÄÆ÷³ÍÆ®
+    // ëª¨ì…˜ ì›Œí•‘ ì»´í¬ë„ŒíŠ¸
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
     UMotionWarpingComponent* MotionWarpingComponent;
 
     // --------------------------------------------------
-    // GAS (Gameplay Ability System) ÀÎÅÍÆäÀÌ½º ±¸Çö
+    // GAS (Gameplay Ability System) ì¸í„°í˜ì´ìŠ¤ êµ¬í˜„
     // --------------------------------------------------
     virtual UAbilitySystemComponent* GetAbilitySystemComponent() const override;
+
+    // --------------------------------------------------
+    // Health / Damage
+    // --------------------------------------------------
+    UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Stat")
+    float MaxHP = 100.f;
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Stat")
+    float CurrentHP = 100.f;
+
+    UFUNCTION(BlueprintPure, Category = "Stat")
+    bool IsDead() const { return CurrentHP <= 0.f; }
+
+    virtual float TakeDamage(float DamageAmount, struct FDamageEvent const& DamageEvent, class AController* EventInstigator, AActor* DamageCauser) override;
+
+    UPROPERTY(BlueprintAssignable, Category = "Stat")
+    FOnDamagedSignature OnDamaged;
+
+protected:
+    // ì¶”í›„ì— í”¼ê²© ì´í™íŠ¸ë‚˜ ì‚¬ë§ ì—°ì¶œì„ ë¶™ì¼ ìˆ˜ ìˆë„ë¡ ë¸”ë£¨í”„ë¦°íŠ¸ì— ë…¸ì¶œí•´ ë‘” ì´ë²¤íŠ¸
+    UFUNCTION(BlueprintImplementableEvent, Category = "Stat")
+    void OnDeath();
+
+    virtual void HandleDeath();
 };

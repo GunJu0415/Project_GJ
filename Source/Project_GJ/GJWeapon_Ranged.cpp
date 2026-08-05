@@ -1,11 +1,11 @@
 #include "GJWeapon_Ranged.h"
 #include "Engine/World.h"
-#include "Components/MeshComponent.h" // ¹«±â ¸Ş½Ã¿¡ µû¶ó Static/Skeletal Æ÷ÇÔ
+#include "Components/MeshComponent.h" // ë¬´ê¸° ë©”ì‹œì— ë”°ë¼ Static/Skeletal í¬í•¨
 #include "GJProjectile.h"
 
 AGJWeapon_Ranged::AGJWeapon_Ranged()
 {
-    PoolSize = 30; // ±âº» ÅºÃ¢ 30¹ß
+    PoolSize = 30; // ê¸°ë³¸ íƒ„ì°½ 30ë°œ
 }
 
 void AGJWeapon_Ranged::BeginPlay()
@@ -20,15 +20,15 @@ void AGJWeapon_Ranged::CreateProjectilePool()
 
     FActorSpawnParameters SpawnParams;
     SpawnParams.Owner = this;
-    SpawnParams.Instigator = GetInstigator(); // ÃÑÀ» ½ğ Ä³¸¯ÅÍ
+    SpawnParams.Instigator = GetInstigator(); // ì´ì„ ìœ ìºë¦­í„°
 
     for (int32 i = 0; i < PoolSize; i++)
     {
-        // ÃÑ¾ËÀ» »ı¼ºÇÏ°í ¹è¿­¿¡ ´ã¾ÆµÓ´Ï´Ù.
+        // ì´ì•Œì„ ìƒì„±í•˜ê³  ë°°ì—´ì— ë‹´ì•„ë‘¡ë‹ˆë‹¤.
         AGJProjectile* NewProjectile = GetWorld()->SpawnActor<AGJProjectile>(ProjectileClass, FVector::ZeroVector, FRotator::ZeroRotator, SpawnParams);
         if (NewProjectile)
         {
-            // Åõ»çÃ¼ ³»ºÎÀÇ BeginPlay¿¡¼­ ÀÚµ¿À¸·Î Deactivate() µÇ¸ç ¼û°ÜÁı´Ï´Ù.
+            // íˆ¬ì‚¬ì²´ ë‚´ë¶€ì˜ BeginPlayì—ì„œ ìë™ìœ¼ë¡œ Deactivate() ë˜ë©° ìˆ¨ê²¨ì§‘ë‹ˆë‹¤.
             ProjectilePool.Add(NewProjectile);
         }
     }
@@ -36,7 +36,7 @@ void AGJWeapon_Ranged::CreateProjectilePool()
 
 AGJProjectile* AGJWeapon_Ranged::GetAvailableProjectile()
 {
-    // Ç®À» ¼øÈ¸ÇÏ¸ç ºñÈ°¼ºÈ­(½¬°í ÀÖ´Â) ÃÑ¾ËÀ» Ã£½À´Ï´Ù.
+    // í’€ì„ ìˆœíšŒí•˜ë©° ë¹„í™œì„±í™”(ì‰¬ê³  ìˆëŠ”) ì´ì•Œì„ ì°¾ìŠµë‹ˆë‹¤.
     for (AGJProjectile* Projectile : ProjectilePool)
     {
         if (Projectile && !Projectile->IsActive())
@@ -45,40 +45,40 @@ AGJProjectile* AGJWeapon_Ranged::GetAvailableProjectile()
         }
     }
 
-    // ¸¸¾à 30¹ßÀÌ ¸ğµÎ È­¸é¿¡ ³¯¾Æ°¡°í ÀÖ´Ù¸é nullptr ¹İÈ¯ (ÇÊ¿ä½Ã ¿©±â¼­ µ¿Àû Ãß°¡ »ı¼º °¡´É)
+    // ë§Œì•½ 30ë°œì´ ëª¨ë‘ í™”ë©´ì— ë‚ ì•„ê°€ê³  ìˆë‹¤ë©´ nullptr ë°˜í™˜ (í•„ìš”ì‹œ ì—¬ê¸°ì„œ ë™ì  ì¶”ê°€ ìƒì„± ê°€ëŠ¥)
     return nullptr;
 }
 
 void AGJWeapon_Ranged::Fire()
 {
-    // µğ¹ö±ë¿ë È­¸é Ãâ·Â (³ë¶õ»ö ÅØ½ºÆ®, 3ÃÊ À¯Áö)
+    // ë””ë²„ê¹…ìš© í™”ë©´ ì¶œë ¥ (ë…¸ë€ìƒ‰ í…ìŠ¤íŠ¸, 3ì´ˆ ìœ ì§€)
     if (GEngine)
     {
-        GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Yellow, TEXT("Pooling Fire function called!"));
+        //GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Yellow, TEXT("Pooling Fire function called!"));
     }
 
-    // 1. ¹ß»ç ¹æÇâ ¼¼ÆÃ
+    // 1. ë°œì‚¬ ë°©í–¥ ì„¸íŒ…
     FVector ShootDirection = GetInstigator()->GetActorForwardVector();
 
-    // 2. ÃÑ±¸ À§Ä¡ ¼¼ÆÃ (¼ÒÄÏ ÀÌ¸§Àº ºí·çÇÁ¸°Æ® ¼³Á¤°ú ¹İµå½Ã ÀÏÄ¡ÇØ¾ß ÇÕ´Ï´Ù!)
+    // 2. ì´êµ¬ ìœ„ì¹˜ ì„¸íŒ… (ì†Œì¼“ ì´ë¦„ì€ ë¸”ë£¨í”„ë¦°íŠ¸ ì„¤ì •ê³¼ ë°˜ë“œì‹œ ì¼ì¹˜í•´ì•¼ í•©ë‹ˆë‹¤!)
     FVector MuzzleLocation = WeaponMesh->DoesSocketExist(FName("MuzzleSocket")) ?
         WeaponMesh->GetSocketLocation(FName("MuzzleSocket")) : GetActorLocation();
 
-    // 3. Ç®¿¡¼­ ÃÑ¾Ë ÇÏ³ª ²¨³»±â
+    // 3. í’€ì—ì„œ ì´ì•Œ í•˜ë‚˜ êº¼ë‚´ê¸°
     AGJProjectile* ProjectileToFire = GetAvailableProjectile();
 
     if (ProjectileToFire)
     {
-        // 4. ÃÑ±¸ À§Ä¡¿Í ½î´Â ¹æÇâ ¼¼ÆÃ ¹× ¹ß»ç
         ProjectileToFire->SetActorLocationAndRotation(MuzzleLocation, ShootDirection.Rotation());
-        ProjectileToFire->FireInDirection(ShootDirection);
+        // ë°ì´í„° í…Œì´ë¸”ì—ì„œ ê°€ì ¸ì˜¨ ë°ë¯¸ì§€/ì†ë„/ì‚¬ê±°ë¦¬ ê·¸ëŒ€ë¡œ ë°œì‚¬í•©ë‹ˆë‹¤.
+        ProjectileToFire->FireInDirection(ShootDirection, WeaponStat.BaseDamage, WeaponStat.ProjectileSpeed, WeaponStat.Range);
     }
     else
     {
-        // Ç®¿¡ ³²Àº ÃÑ¾ËÀÌ ¾øÀ» ¶§ È­¸é Ãâ·Â (»¡°£»ö ÅØ½ºÆ®, 3ÃÊ À¯Áö)
+        // í’€ì— ë‚¨ì€ ì´ì•Œì´ ì—†ì„ ë•Œ í™”ë©´ ì¶œë ¥ (ë¹¨ê°„ìƒ‰ í…ìŠ¤íŠ¸, 3ì´ˆ ìœ ì§€)
         if (GEngine)
         {
-            GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Red, TEXT("Failed to get projectile from pool!"));
+            //GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Red, TEXT("Failed to get projectile from pool!"));
         }
     }
 }

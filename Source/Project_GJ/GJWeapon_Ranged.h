@@ -23,7 +23,7 @@ protected:
     virtual void BeginPlay() override;
 
 public:
-    //  ºÎ¸ğ¿¡¼­ ÀÌ»ç ¿Â Ç®¸µ °ü·Ã º¯¼öµé
+    //  ë¶€ëª¨ì—ì„œ ì´ì‚¬ ì˜¨ í’€ë§ ê´€ë ¨ ë³€ìˆ˜ë“¤
     UPROPERTY(EditDefaultsOnly, Category = "Pooling")
     TSubclassOf<AGJProjectile> ProjectileClass;
 

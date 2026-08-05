@@ -1,23 +1,27 @@
 #include "GJBaseCharacter.h"
 #include "CharacterStateComponent.h"
 #include "MotionWarpingComponent.h"
-#include "AbilitySystemComponent.h" // GAS ½Ã½ºÅÛ¿ë (¼±ÅÃ)
+#include "AbilitySystemComponent.h" // GAS ì‹œìŠ¤í…œìš© (ì„ íƒ)
+#include "Components/CapsuleComponent.h"
+#include "GameFramework/CharacterMovementComponent.h"
 
 AGJBaseCharacter::AGJBaseCharacter()
 {
-    // Ä³¸¯ÅÍ°¡ ¸Å ÇÁ·¹ÀÓ ¾÷µ¥ÀÌÆ®(Tick)¸¦ »ç¿ëÇÏµµ·Ï ¼³Á¤
+    // ìºë¦­í„°ê°€ ë§¤ í”„ë ˆì„ ì—…ë°ì´íŠ¸(Tick)ë¥¼ ì‚¬ìš©í•˜ë„ë¡ ì„¤ì •
     PrimaryActorTick.bCanEverTick = true;
 
-    // 1. °øÅë »óÅÂ °ü¸® ÄÄÆ÷³ÍÆ® »ı¼º
+    // 1. ê³µí†µ ìƒíƒœ ê´€ë¦¬ ì»´í¬ë„ŒíŠ¸ ìƒì„±
     StateComponent = CreateDefaultSubobject<UCharacterStateComponent>(TEXT("StateComponent"));
 
-    // 2. °øÅë ¸ğ¼Ç ¿öÇÎ ÄÄÆ÷³ÍÆ® »ı¼º
+    // 2. ê³µí†µ ëª¨ì…˜ ì›Œí•‘ ì»´í¬ë„ŒíŠ¸ ìƒì„±
     MotionWarpingComponent = CreateDefaultSubobject<UMotionWarpingComponent>(TEXT("MotionWarpingComponent"));
 }
 
 void AGJBaseCharacter::BeginPlay()
 {
     Super::BeginPlay();
+
+    CurrentHP = MaxHP;
 }
 
 void AGJBaseCharacter::Tick(float DeltaTime)
@@ -25,11 +29,50 @@ void AGJBaseCharacter::Tick(float DeltaTime)
     Super::Tick(DeltaTime);
 }
 
-// ±âÁ¸ GJCharacter¿¡ ÀÖ´ø GAS ÀÎÅÍÆäÀÌ½º ÀÌµ¿
+// ê¸°ì¡´ GJCharacterì— ìˆë˜ GAS ì¸í„°í˜ì´ìŠ¤ ì´ë™
 UAbilitySystemComponent* AGJBaseCharacter::GetAbilitySystemComponent() const
 {
-    // º£ÀÌ½º Ä³¸¯ÅÍ ´Ü°è¿¡¼­´Â ¾ÆÁ÷ ÄÄÆ÷³ÍÆ®°¡ »ı¼ºµÇÁö ¾Ê¾ÒÀ¸¹Ç·Î nullptr ¹İÈ¯.
-    // ÇÃ·¹ÀÌ¾î(GJCharacter)³ª Àû(GJEnemyCharacter) Å¬·¡½º¿¡¼­ 
-    // ½ÇÁ¦ ÄÄÆ÷³ÍÆ®¸¦ »ı¼ºÇÏ°í ¿À¹ö¶óÀÌµåÇÏ¿© ¹İÈ¯ÇÏµµ·Ï ¼³°èÇÕ´Ï´Ù.
+    // ë² ì´ìŠ¤ ìºë¦­í„° ë‹¨ê³„ì—ì„œëŠ” ì•„ì§ ì»´í¬ë„ŒíŠ¸ê°€ ìƒì„±ë˜ì§€ ì•Šì•˜ìœ¼ë¯€ë¡œ nullptr ë°˜í™˜.
+    // í”Œë ˆì´ì–´(GJCharacter)ë‚˜ ì (GJEnemyCharacter) í´ë˜ìŠ¤ì—ì„œ
+    // ì‹¤ì œ ì»´í¬ë„ŒíŠ¸ë¥¼ ìƒì„±í•˜ê³  ì˜¤ë²„ë¼ì´ë“œí•˜ì—¬ ë°˜í™˜í•˜ë„ë¡ ì„¤ê³„í•©ë‹ˆë‹¤.
     return nullptr;
+}
+
+float AGJBaseCharacter::TakeDamage(float DamageAmount, FDamageEvent const& DamageEvent, AController* EventInstigator, AActor* DamageCauser)
+{
+    float ActualDamage = Super::TakeDamage(DamageAmount, DamageEvent, EventInstigator, DamageCauser);
+
+    if (IsDead() || ActualDamage <= 0.f)
+    {
+        return ActualDamage;
+    }
+
+    CurrentHP = FMath::Clamp(CurrentHP - ActualDamage, 0.f, MaxHP);
+    OnDamaged.Broadcast(ActualDamage, DamageCauser);
+
+    // í”¼ê²© í™•ì¸ìš© ë””ë²„ê·¸ ì¶œë ¥ (ë°ì´í„°í…Œì´ë¸”/ì¶©ëŒ ì„¸íŒ… í™•ì¸ ëë‚˜ë©´ ì§€ì›Œë„ ë¨)
+    if (GEngine)
+    {
+        GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, TEXT("Damaged!!!!"));
+    }
+
+    if (CurrentHP <= 0.f)
+    {
+        HandleDeath();
+    }
+
+    return ActualDamage;
+}
+
+void AGJBaseCharacter::HandleDeath()
+{
+    if (StateComponent)
+    {
+        StateComponent->SetState(ECharacterState::Dead);
+    }
+
+    GetCharacterMovement()->DisableMovement();
+    GetCapsuleComponent()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+
+    OnDeath();
 }

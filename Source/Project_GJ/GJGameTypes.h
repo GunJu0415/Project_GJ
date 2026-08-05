@@ -2,10 +2,10 @@
 
 #include "CoreMinimal.h"
 #include "Engine/DataTable.h"
-#include "GJGameTypes.generated.h" // ÀÌ¸§ ¸ÂÃçÁÖ±â
+#include "GJGameTypes.generated.h" // ì´ë¦„ ë§ì¶°ì£¼ê¸°
 
 // -----------------------------------------
-// Ä³¸¯ÅÍ ½ºÅÈ µ¥ÀÌÅÍ Å×ÀÌºí ±¸Á¶Ã¼
+// ìºë¦­í„° ìŠ¤íƒ¯ ë°ì´í„° í…Œì´ë¸” êµ¬ì¡°ì²´
 // -----------------------------------------
 USTRUCT(BlueprintType)
 struct FCharacterStat : public FTableRowBase
@@ -23,7 +23,7 @@ struct FCharacterStat : public FTableRowBase
 };
 
 // -----------------------------------------
-// ¹«±â ½ºÅÈ µ¥ÀÌÅÍ Å×ÀÌºí ±¸Á¶Ã¼
+// ë¬´ê¸° ìŠ¤íƒ¯ ë°ì´í„° í…Œì´ë¸” êµ¬ì¡°ì²´
 // -----------------------------------------
 USTRUCT(BlueprintType)
 struct FWeaponStat : public FTableRowBase
@@ -36,7 +36,15 @@ struct FWeaponStat : public FTableRowBase
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stat")
     float AttackSpeedRate = 1.0f;
 
-    // ¿¡¼Â Á¤º¸µµ ¿©±â¿¡ ÅëÇÕ
+    // ì´ì•Œì´ ë‚ ì•„ê°€ëŠ” ì†ë„ (ì§ì„  ë¹„í–‰, ì´ˆë‹¹ ìœ ë‹›)
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "WeaponStat")
+    float ProjectileSpeed = 3000.f;
+
+    // ì´ì•Œì˜ ìµœëŒ€ ì‚¬ê±°ë¦¬ (ì´ë§Œí¼ ë‚ ì•„ê°€ë©´ ìë™ìœ¼ë¡œ ë¹„í™œì„±í™”ë˜ì–´ í’€ë¡œ ëŒì•„ê°)
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "WeaponStat")
+    float Range = 2000.f;
+
+    // ì—ì…‹ ì •ë³´ë„ ì—¬ê¸°ì— í†µí•©
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Asset")
     USkeletalMesh* WeaponMeshAsset;
 

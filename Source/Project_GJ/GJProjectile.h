@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
+#include "TimerManager.h"
 #include "GJProjectile.generated.h"
 
 class USphereComponent;
@@ -15,19 +16,19 @@ class PROJECT_GJ_API AGJProjectile : public AActor
 public:
     AGJProjectile();
 
-    // Ç®(Pool)¿¡¼­ ²¨³»¼­ ¹ß»çÇÒ ¶§ È£ÃâÇÏ´Â ÇÔ¼ö
-    void FireInDirection(const FVector& ShootDirection);
+    // í’€(Pool)ì—ì„œ êº¼ë‚´ì„œ ë°œì‚¬í•  ë•Œ í˜¸ì¶œí•˜ëŠ” í•¨ìˆ˜. ë°ë¯¸ì§€/ì†ë„/ì‚¬ê±°ë¦¬ë¥¼ ë§¤ë²ˆ ìƒˆë¡œ ë°›ì•„ì„œ ì„¸íŒ…í•©ë‹ˆë‹¤.
+    void FireInDirection(const FVector& ShootDirection, float InDamage, float InSpeed, float InRange);
 
-    // Ãæµ¹ÇÏ°Å³ª ¼ö¸íÀÌ ´ÙÇßÀ» ¶§ Ç®(Pool)·Î ¹İÈ¯(¼û±è)ÇÏ´Â ÇÔ¼ö
+    // ì¶©ëŒí•˜ê±°ë‚˜ ìˆ˜ëª…ì´ ë‹¤í–ˆì„ ë•Œ í’€(Pool)ë¡œ ë°˜í™˜(ìˆ¨ê¹€)í•˜ëŠ” í•¨ìˆ˜
     void Deactivate();
 
-    // ÇöÀç »ç¿ë ÁßÀÎ ÃÑ¾ËÀÎÁö È®ÀÎ
+    // í˜„ì¬ ì‚¬ìš© ì¤‘ì¸ ì´ì•Œì¸ì§€ í™•ì¸
     bool IsActive() const { return bIsActive; }
 
 protected:
     virtual void BeginPlay() override;
 
-    // Å¸°İ ÆÇÁ¤ (ÃÑ¾ËÀÌ ¾îµò°¡¿¡ ¸Â¾ÒÀ» ¶§)
+    // íƒ€ê²© íŒì • (ì´ì•Œì´ ì–´ë”˜ê°€ì— ë§ì•˜ì„ ë•Œ)
     UFUNCTION()
     void OnHit(UPrimitiveComponent* HitComp, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit);
 
@@ -43,4 +44,8 @@ protected:
 
 private:
     bool bIsActive;
+    float Damage;
+
+    // ì‚¬ê±°ë¦¬ë§Œí¼ ë‚ ì•„ê°€ë©´ ìë™ìœ¼ë¡œ Deactivate ì‹œí‚¤ëŠ” íƒ€ì´ë¨¸
+    FTimerHandle RangeTimerHandle;
 };

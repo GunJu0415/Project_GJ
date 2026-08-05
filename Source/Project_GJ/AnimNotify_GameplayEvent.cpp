@@ -13,7 +13,7 @@ void UAnimNotify_GameplayEvent::Notify(USkeletalMeshComponent* MeshComp, UAnimSe
         switch (NotifyType)
         {
         case EGameplayNotifyType::Fire:
-            GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Yellow, TEXT("NotifyCome!!!"));
+            //GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Yellow, TEXT("NotifyCome!!!"));
             Character->PerformFire();
 
             break;

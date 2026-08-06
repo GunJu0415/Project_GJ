@@ -18,6 +18,7 @@ struct FInputActionValue;
 class UDataTable;
 class AGJWeaponBase;
 class UCharacterStateComponent;
+class UUserWidget;
 
 enum class EDodgeType
 {
@@ -134,6 +135,15 @@ protected:
 
     void AttackInputPressed();
 
+    // 원거리 무기 연사 시도 (Tick에서 매 프레임 호출됨 - 실제 발사 간격 판단은 무기의 Fire() 내부 쿨다운이 담당)
+    void TryAutoFire();
+
+    // 공격 입력을 뗐을 때 (연사 정지용)
+    void AttackInputReleased();
+
+    // 공격 버튼을 누르고 있는 동안 true - Tick에서 이 값을 보고 TryAutoFire()를 계속 시도함
+    bool bIsAutoFiring = false;
+
     // ==========================================
     // [신규] 재장전 관련 함수 및 타이머
     // ==========================================
@@ -176,4 +186,18 @@ protected:
     AGJWeaponBase* EquippedWeapon;
 
     void EquipWeapon();
+
+public:
+    // UI(UMG) 등에서 현재 장착 무기를 가져다 쓰기 위한 getter (예: 탄약 표시하려면 여기서 받아 GJWeapon_Ranged로 캐스팅)
+    UFUNCTION(BlueprintPure, Category = "Weapon")
+    AGJWeaponBase* GetEquippedWeapon() const { return EquippedWeapon; }
+
+protected:
+    // 탄약 UI 등 HUD 위젯 클래스. BP_GJCharacter 디테일 패널에서 WBP_AmmoUI 같은 위젯 블루프린트를 할당하면
+    // BeginPlay에서 자동으로 생성되어 화면에 뜸.
+    UPROPERTY(EditDefaultsOnly, Category = "UI")
+    TSubclassOf<UUserWidget> AmmoWidgetClass;
+
+    UPROPERTY()
+    UUserWidget* AmmoWidgetInstance;
 };

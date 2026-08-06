@@ -66,6 +66,8 @@ void AGJWeapon_Ranged::FinishReload()
 {
     CurrentAmmo = WeaponStat.MagazineSize;
     bIsReloading = false;
+
+    OnAmmoChanged.Broadcast(CurrentAmmo, WeaponStat.MagazineSize);
 }
 
 void AGJWeapon_Ranged::Fire()
@@ -113,6 +115,8 @@ void AGJWeapon_Ranged::Fire()
 
         CurrentAmmo--;
         LastFireTime = CurrentTime;
+
+        OnAmmoChanged.Broadcast(CurrentAmmo, WeaponStat.MagazineSize);
     }
     else
     {

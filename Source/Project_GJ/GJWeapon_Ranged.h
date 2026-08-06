@@ -6,6 +6,9 @@
 
 class AGJProjectile;
 
+// 탄약이 바뀔 때마다(발사/재장전 완료) 브로드캐스트 - UI(UMG)에서 폴링 없이 바인딩해서 쓰기 위함
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnAmmoChangedSignature, int32, CurrentAmmo, int32, MaxAmmo);
+
 UCLASS()
 class PROJECT_GJ_API AGJWeapon_Ranged : public AGJWeaponBase
 {
@@ -15,6 +18,9 @@ public:
     AGJWeapon_Ranged();
 
     virtual void Fire() override;
+
+    UPROPERTY(BlueprintAssignable, Category = "Weapon|Ammo")
+    FOnAmmoChangedSignature OnAmmoChanged;
 
     void CreateProjectilePool();
     class AGJProjectile* GetAvailableProjectile();

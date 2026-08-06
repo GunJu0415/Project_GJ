@@ -12,6 +12,7 @@
 #include "Engine/DataTable.h"
 #include "GJWeapon_Ranged.h"
 #include "GJWeaponBase.h"
+#include "Blueprint/UserWidget.h"
 
 AGJCharacter::AGJCharacter()
 {
@@ -67,6 +68,19 @@ void AGJCharacter::BeginPlay()
 
     UpdateCharacterStat(CurrentLevel);
     EquipWeapon();
+
+    // 탄약 UI 등 HUD 위젯 자동 생성 및 화면 표시
+    if (AmmoWidgetClass)
+    {
+        if (APlayerController* PC = Cast<APlayerController>(GetController()))
+        {
+            AmmoWidgetInstance = CreateWidget<UUserWidget>(PC, AmmoWidgetClass);
+            if (AmmoWidgetInstance)
+            {
+                AmmoWidgetInstance->AddToViewport();
+            }
+        }
+    }
 }
 
 void AGJCharacter::Tick(float DeltaTime)
@@ -77,6 +91,11 @@ void AGJCharacter::Tick(float DeltaTime)
     UpdateCharacterRotation();
     UpdateCameraOffset(DeltaTime);
     ApplyCameraOffset();
+
+    if (bIsAutoFiring)
+    {
+        TryAutoFire();
+    }
 }
 
 void AGJCharacter::UpdateMouseState()
@@ -198,6 +217,9 @@ void AGJCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCompone
         if (AttackAction)
         {
             EnhancedInput->BindAction(AttackAction, ETriggerEvent::Started, this, &AGJCharacter::AttackInputPressed);
+            // 원거리 무기 연사(꾹 누르고 있는 동안 계속 발사)를 멈추기 위한 입력 해제 바인딩
+            EnhancedInput->BindAction(AttackAction, ETriggerEvent::Completed, this, &AGJCharacter::AttackInputReleased);
+            EnhancedInput->BindAction(AttackAction, ETriggerEvent::Canceled, this, &AGJCharacter::AttackInputReleased);
         }
 
         // [신규] 재장전 입력 바인딩 (R키)
@@ -245,6 +267,19 @@ void AGJCharacter::AttackInputPressed()
     {
         // 무기 BP나 데이터 테이블에 몽타주 에셋 할당이 안 됨
         //if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, TEXT("ERROR: WeaponMontage is NULL! Check Weapon BP or DataTable."));
+        return;
+    }
+
+    // 원거리 무기는 콤보 시스템을 타지 않음. 몽타주는 누를 때 한 번만 재생(비주얼용)하고,
+    // 실제 발사는 몽타주 노티파이에 맡기지 않고 Tick에서 매 프레임 시도함.
+    // (노티파이에 맡기면 재생이 FireInterval보다 자주 끊길 경우 노티파이 지점에 도달하지 못해 발사가 안 되는 문제가 있었고,
+    //  타이머로 별도 스케줄링하면 타이머 자체의 프레임 단위 오차 + Fire() 내부 쿨다운이라는 두 타이밍 소스가 겹쳐서 편차가 생겼음.
+    //  Tick에서 계속 시도하고 실제 발사 간격은 Fire() 내부 쿨다운 하나로만 판단하면 소스가 하나로 줄어 훨씬 균일함)
+    if (AGJWeapon_Ranged* RangedWeapon = Cast<AGJWeapon_Ranged>(EquippedWeapon))
+    {
+        PlayAnimMontage(WeaponMontage);
+        RangedWeapon->Fire();
+        bIsAutoFiring = true;
         return;
     }
 
@@ -329,6 +364,22 @@ void AGJCharacter::PerformFire()
             UE_LOG(LogTemp, Error, TEXT("EquippedWeapon is not a RangedWeapon!"));
         }
     }
+}
+
+void AGJCharacter::TryAutoFire()
+{
+    if (!EquippedWeapon || !StateComponent) return;
+    if (StateComponent->GetState() == ECharacterState::Reloading) return;
+
+    if (AGJWeapon_Ranged* RangedWeapon = Cast<AGJWeapon_Ranged>(EquippedWeapon))
+    {
+        RangedWeapon->Fire();
+    }
+}
+
+void AGJCharacter::AttackInputReleased()
+{
+    bIsAutoFiring = false;
 }
 
 // ==========================================

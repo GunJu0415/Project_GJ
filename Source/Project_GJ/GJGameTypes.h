@@ -44,10 +44,28 @@ struct FWeaponStat : public FTableRowBase
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "WeaponStat")
     float Range = 2000.f;
 
+    // 연사 속도 제어: 이 시간(초)마다 최대 1발까지 발사 가능 (예: 0.1 = 초당 10발)
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "WeaponStat")
+    float FireInterval = 0.1f;
+
+    // 탄창 용량. 총알 자체는 무제한이지만 이 발수를 다 쏘면 재장전(R)이 필요함.
+    // 밸런스 요소: 강한 무기일수록 이 값을 작게 잡아 재장전을 자주 하도록 유도.
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "WeaponStat")
+    int32 MagazineSize = 30;
+
+    // 재장전 소요 시간(초). ReloadMontageAsset이 지정되어 있으면 몽타주 재생이 우선되고,
+    // 몽타주가 없을 때는 이 값만큼 타이머로 대체 재생됨.
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "WeaponStat")
+    float ReloadTime = 1.5f;
+
     // 에셋 정보도 여기에 통합
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Asset")
     USkeletalMesh* WeaponMeshAsset;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Asset")
     UAnimMontage* AttackMontageAsset;
+
+    // 재장전 몽타주 (아직 없다면 비워두면 됨 - 비어있으면 ReloadTime 타이머로 대체됨)
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Asset")
+    UAnimMontage* ReloadMontageAsset;
 };

@@ -199,6 +199,12 @@ void AGJCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCompone
         {
             EnhancedInput->BindAction(AttackAction, ETriggerEvent::Started, this, &AGJCharacter::AttackInputPressed);
         }
+
+        // [신규] 재장전 입력 바인딩 (R키)
+        if (ReloadAction)
+        {
+            EnhancedInput->BindAction(ReloadAction, ETriggerEvent::Started, this, &AGJCharacter::ReloadInputPressed);
+        }
     }
 }
 
@@ -232,6 +238,7 @@ void AGJCharacter::AttackInputPressed()
 
     if (!StateComponent) return;
     if (StateComponent->GetState() == ECharacterState::Dodge) return;
+    if (StateComponent->GetState() == ECharacterState::Reloading) return;
 
     UAnimMontage* WeaponMontage = EquippedWeapon->GetAttackMontage();
     if (!WeaponMontage)
@@ -325,6 +332,50 @@ void AGJCharacter::PerformFire()
 }
 
 // ==========================================
+// [신규] 재장전 구현부
+// ==========================================
+void AGJCharacter::ReloadInputPressed()
+{
+    if (!EquippedWeapon || !StateComponent) return;
+    if (StateComponent->GetState() == ECharacterState::Dead) return;
+    if (StateComponent->GetState() == ECharacterState::Reloading) return;
+
+    // 근접 무기에는 재장전 개념이 없으므로 원거리 무기일 때만 처리
+    AGJWeapon_Ranged* RangedWeapon = Cast<AGJWeapon_Ranged>(EquippedWeapon);
+    if (!RangedWeapon || !RangedWeapon->CanReload()) return;
+
+    RangedWeapon->StartReload();
+    StateComponent->SetState(ECharacterState::Reloading);
+
+    UAnimMontage* ReloadMontage = RangedWeapon->GetReloadMontage();
+    if (ReloadMontage)
+    {
+        PlayAnimMontage(ReloadMontage);
+        // 재생이 끝나면 OnMontageEndedEvent에서 CompleteReload()를 호출함
+    }
+    else
+    {
+        // 아직 재장전 몽타주가 없으므로 무기 데이터의 ReloadTime만큼 타이머로 대체
+        GetWorldTimerManager().SetTimer(ReloadTimerHandle, this, &AGJCharacter::CompleteReload, RangedWeapon->GetWeaponStat().ReloadTime, false);
+    }
+}
+
+void AGJCharacter::CompleteReload()
+{
+    GetWorldTimerManager().ClearTimer(ReloadTimerHandle);
+
+    if (AGJWeapon_Ranged* RangedWeapon = Cast<AGJWeapon_Ranged>(EquippedWeapon))
+    {
+        RangedWeapon->FinishReload();
+    }
+
+    if (StateComponent && StateComponent->GetState() == ECharacterState::Reloading)
+    {
+        StateComponent->SetState(ECharacterState::Idle);
+    }
+}
+
+// ==========================================
 // 기존 로직들
 // ==========================================
 void AGJCharacter::PerformDodge()
@@ -384,6 +435,11 @@ void AGJCharacter::OnMontageEndedEvent(UAnimMontage* Montage, bool bInterrupted)
         else if (EquippedWeapon && Montage == EquippedWeapon->GetAttackMontage())
         {
             ResetCombo();
+        }
+        // 3. 재장전 몽타주가 끝났을 때 (또는 끊겼을 때)
+        else if (EquippedWeapon && Montage == EquippedWeapon->GetReloadMontage())
+        {
+            CompleteReload();
         }
     }
 }

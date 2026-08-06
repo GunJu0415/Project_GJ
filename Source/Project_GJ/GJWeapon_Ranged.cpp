@@ -12,6 +12,9 @@ void AGJWeapon_Ranged::BeginPlay()
 {
     Super::BeginPlay();
     CreateProjectilePool();
+
+    // 탄창을 가득 채운 상태로 시작
+    CurrentAmmo = WeaponStat.MagazineSize;
 }
 
 void AGJWeapon_Ranged::CreateProjectilePool()
@@ -49,8 +52,43 @@ AGJProjectile* AGJWeapon_Ranged::GetAvailableProjectile()
     return nullptr;
 }
 
+bool AGJWeapon_Ranged::CanReload() const
+{
+    return !bIsReloading && CurrentAmmo < WeaponStat.MagazineSize;
+}
+
+void AGJWeapon_Ranged::StartReload()
+{
+    bIsReloading = true;
+}
+
+void AGJWeapon_Ranged::FinishReload()
+{
+    CurrentAmmo = WeaponStat.MagazineSize;
+    bIsReloading = false;
+}
+
 void AGJWeapon_Ranged::Fire()
 {
+    // 재장전 중에는 발사 불가
+    if (bIsReloading)
+    {
+        return;
+    }
+
+    // 연사 속도 제한: WeaponStat.FireInterval(초)마다 최대 1발
+    const float CurrentTime = GetWorld()->GetTimeSeconds();
+    if (CurrentTime - LastFireTime < WeaponStat.FireInterval)
+    {
+        return;
+    }
+
+    // 탄창이 비었으면 발사 불가 (재장전은 R 입력으로 별도 처리)
+    if (CurrentAmmo <= 0)
+    {
+        return;
+    }
+
     // 디버깅용 화면 출력 (노란색 텍스트, 3초 유지)
     if (GEngine)
     {
@@ -72,6 +110,9 @@ void AGJWeapon_Ranged::Fire()
         ProjectileToFire->SetActorLocationAndRotation(MuzzleLocation, ShootDirection.Rotation());
         // 데이터 테이블에서 가져온 데미지/속도/사거리 그대로 발사합니다.
         ProjectileToFire->FireInDirection(ShootDirection, WeaponStat.BaseDamage, WeaponStat.ProjectileSpeed, WeaponStat.Range);
+
+        CurrentAmmo--;
+        LastFireTime = CurrentTime;
     }
     else
     {

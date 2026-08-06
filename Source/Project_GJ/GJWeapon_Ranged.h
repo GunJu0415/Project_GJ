@@ -19,6 +19,24 @@ public:
     void CreateProjectilePool();
     class AGJProjectile* GetAvailableProjectile();
 
+    // 재장전 가능 여부 (재장전 중이 아니고, 탄창이 가득 차있지 않을 때)
+    UFUNCTION(BlueprintPure, Category = "Weapon|Ammo")
+    bool CanReload() const;
+
+    // 재장전 시작 (탄창을 채우는 시점은 FinishReload에서 처리 - 몽타주/타이머 종료 후 호출됨)
+    UFUNCTION(BlueprintCallable, Category = "Weapon|Ammo")
+    void StartReload();
+
+    // 재장전 완료 처리 (탄창을 최대치로 채움)
+    UFUNCTION(BlueprintCallable, Category = "Weapon|Ammo")
+    void FinishReload();
+
+    UFUNCTION(BlueprintPure, Category = "Weapon|Ammo")
+    bool IsReloading() const { return bIsReloading; }
+
+    UFUNCTION(BlueprintPure, Category = "Weapon|Ammo")
+    int32 GetCurrentAmmo() const { return CurrentAmmo; }
+
 protected:
     virtual void BeginPlay() override;
 
@@ -32,4 +50,15 @@ public:
 
     UPROPERTY()
     TArray<AGJProjectile*> ProjectilePool;
+
+protected:
+    // 현재 탄창에 남은 탄약 수 (WeaponStat.MagazineSize로 초기화됨)
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Weapon|Ammo")
+    int32 CurrentAmmo = 0;
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Weapon|Ammo")
+    bool bIsReloading = false;
+
+    // 마지막으로 발사한 시각 (WeaponStat.FireInterval과 비교해 연사 속도를 제한하는 데 사용)
+    float LastFireTime = -100.f;
 };

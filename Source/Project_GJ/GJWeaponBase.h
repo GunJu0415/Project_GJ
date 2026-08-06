@@ -30,12 +30,16 @@ protected:
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Weapon Animation")
     UAnimMontage* AttackMontage;
 
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Weapon Animation")
+    UAnimMontage* ReloadMontage;
+
 public:
     FORCEINLINE FWeaponStat GetWeaponStat() const { return WeaponStat; }
     FORCEINLINE UAnimMontage* GetAttackMontage() const { return AttackMontage; }
+    FORCEINLINE UAnimMontage* GetReloadMontage() const { return ReloadMontage; }
     FORCEINLINE USkeletalMeshComponent* GetWeaponMesh() const { return WeaponMesh; }
 
-    // Ä³¸¯ÅÍ°¡ È£ÃâÇÒ »ç°İ ÇÔ¼ö (¼±¾ğ)
+    // ìºë¦­í„°ê°€ í˜¸ì¶œí•  ì‚¬ê²© í•¨ìˆ˜ (ì„ ì–¸)
     virtual void Fire();
 
 };

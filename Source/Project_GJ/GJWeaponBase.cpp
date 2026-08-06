@@ -2,19 +2,19 @@
 
 AGJWeaponBase::AGJWeaponBase()
 {
-    // ¹«±â ÀÚÃ¼´Â ¸Å ÇÁ·¹ÀÓ TickÀ» µ¹ ÇÊ¿ä°¡ ¾øÀ¸¹Ç·Î ÃÖÀûÈ­¸¦ À§ÇØ false ¼³Á¤
+    // ë¬´ê¸° ìì²´ëŠ” ë§¤ í”„ë ˆì„ Tickì„ ëŒ í•„ìš”ê°€ ì—†ìœ¼ë¯€ë¡œ ìµœì í™”ë¥¼ ìœ„í•´ false ì„¤ì •
     PrimaryActorTick.bCanEverTick = false;
 
-    // ·çÆ® ÄÄÆ÷³ÍÆ® »ı¼º ¹× ¼³Á¤
+    // ë£¨íŠ¸ ì»´í¬ë„ŒíŠ¸ ìƒì„± ë° ì„¤ì •
     RootComp = CreateDefaultSubobject<USceneComponent>(TEXT("RootComp"));
     SetRootComponent(RootComp);
 
-    // ¹«±â ¸Ş½Ã ÄÄÆ÷³ÍÆ® »ı¼º ¹× ºÎÂø
+    // ë¬´ê¸° ë©”ì‹œ ì»´í¬ë„ŒíŠ¸ ìƒì„± ë° ë¶€ì°©
     WeaponMesh = CreateDefaultSubobject<USkeletalMeshComponent>(TEXT("WeaponMesh"));
     WeaponMesh->SetupAttachment(RootComponent);
 
-    // ¹«±â ÀÚÃ¼ÀÇ ¹°¸® Äİ¸®ÀüÀº ºÒÇÊ¿äÇÑ °æ¿ì°¡ ¸¹¾Æ NoCollisionÀ¸·Î ÃÊ±âÈ­
-    // (½ÇÁ¦ Å¸°İ ÆÇÁ¤Àº ÃßÈÄ Anim Notify³ª º°µµÀÇ ¿À¹ö·¦ ¹Ú½º·Î Ã³¸®)
+    // ë¬´ê¸° ìì²´ì˜ ë¬¼ë¦¬ ì½œë¦¬ì „ì€ ë¶ˆí•„ìš”í•œ ê²½ìš°ê°€ ë§ì•„ NoCollisionìœ¼ë¡œ ì´ˆê¸°í™”
+    // (ì‹¤ì œ íƒ€ê²© íŒì •ì€ ì¶”í›„ Anim Notifyë‚˜ ë³„ë„ì˜ ì˜¤ë²„ë© ë°•ìŠ¤ë¡œ ì²˜ë¦¬)
     WeaponMesh->SetCollisionProfileName(TEXT("NoCollision"));
 }
 
@@ -22,21 +22,24 @@ void AGJWeaponBase::OnConstruction(const FTransform& Transform)
 {
     Super::OnConstruction(Transform);
 
-    // µ¥ÀÌÅÍ Å×ÀÌºí ÇÚµéÀÌ ºñ¾îÀÖÁö ¾ÊÀºÁö °Ë»ç
+    // ë°ì´í„° í…Œì´ë¸” í•¸ë“¤ì´ ë¹„ì–´ìˆì§€ ì•Šì€ì§€ ê²€ì‚¬
     if (!WeaponDataHandle.IsNull())
     {
-        // Å×ÀÌºí¿¡¼­ ÇØ´ç Row NameÀÇ µ¥ÀÌÅÍ¸¦ °¡Á®¿È
+        // í…Œì´ë¸”ì—ì„œ í•´ë‹¹ Row Nameì˜ ë°ì´í„°ë¥¼ ê°€ì ¸ì˜´
         FWeaponStat* RowData = WeaponDataHandle.GetRow<FWeaponStat>(TEXT("Weapon Initialization"));
 
         if (RowData)
         {
-            // 1. ½ºÅÈ µ¥ÀÌÅÍ µ¤¾î¾²±â
+            // 1. ìŠ¤íƒ¯ ë°ì´í„° ë®ì–´ì“°ê¸°
             WeaponStat = *RowData;
 
-            // 2. °ø°İ ¸ùÅ¸ÁÖ µ¤¾î¾²±â
+            // 2. ê³µê²© ëª½íƒ€ì£¼ ë®ì–´ì“°ê¸°
             AttackMontage = RowData->AttackMontageAsset;
 
-            // 3. ¹«±â ¸Ş½Ã µ¤¾î¾²±â (Å×ÀÌºí¿¡ ¿¡¼ÂÀÌ ÇÒ´çµÇ¾î ÀÖ´Ù¸é Áï½Ã ¿¡µğÅÍ ¸ğµ¨¸µ º¯°æ)
+            // 3. ì¬ì¥ì „ ëª½íƒ€ì£¼ ë®ì–´ì“°ê¸° (ì•„ì§ ì—ì…‹ì´ ì—†ìœ¼ë©´ nullptrë¡œ ë‚¨ê³ , ì‚¬ìš©í•˜ëŠ” ìª½ì—ì„œ ReloadTime íƒ€ì´ë¨¸ë¡œ ëŒ€ì²´í•¨)
+            ReloadMontage = RowData->ReloadMontageAsset;
+
+            // 4. ë¬´ê¸° ë©”ì‹œ ë®ì–´ì“°ê¸° (í…Œì´ë¸”ì— ì—ì…‹ì´ í• ë‹¹ë˜ì–´ ìˆë‹¤ë©´ ì¦‰ì‹œ ì—ë””í„° ëª¨ë¸ë§ ë³€ê²½)
             if (RowData->WeaponMeshAsset)
             {
                 WeaponMesh->SetSkeletalMeshAsset(RowData->WeaponMeshAsset);

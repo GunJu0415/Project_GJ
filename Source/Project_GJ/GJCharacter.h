@@ -4,7 +4,8 @@
 #include "MotionWarpingComponent.h"
 #include "GJBaseCharacter.h"
 #include "InputActionValue.h"
-#include "GJGameTypes.h" 
+#include "GJGameTypes.h"
+#include "TimerManager.h"
 #include "GJCharacter.generated.h"
 
 class USpringArmComponent;
@@ -71,12 +72,19 @@ protected:
     UInputAction* DodgeAction;
 
     // ==========================================
-    // [�ű�] �޺� ���� �Է�
+    // [신규] 콤보 공격 입력
     // ==========================================
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Input")
     UInputAction* AttackAction;
 
-    // ī�޶� ������ ���� ����
+    // ==========================================
+    // [신규] 재장전 입력 (R키). 에디터에서 IA_Reload 에셋을 만들어 R키에 매핑한 뒤
+    // BP_GJCharacter 디테일 패널에서 이 프로퍼티에 할당해야 동작함.
+    // ==========================================
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Input")
+    UInputAction* ReloadAction;
+
+    // 카메라 오프셋 설정 변수
     UPROPERTY(EditAnywhere, Category = "Camera|Offset")
     float MaxCameraOffset = 250.f;
 
@@ -114,20 +122,31 @@ protected:
 
     void PerformDodge();
 
-    // [����] ���� ��Ÿ�� ���� ó�� �Լ��� �̸� ����
+    // [수정] 범용 몽타주 종료 처리 함수로 이름 변경
     UFUNCTION()
     void OnMontageEndedEvent(UAnimMontage* Montage, bool bInterrupted);
 
     // ==========================================
-    // [�ű�] �޺� ���� ���� ���� �� �Լ�
+    // [신규] 콤보 공격 관련 변수 및 함수
     // ==========================================
     int32 CurrentComboCount;
     bool bHasNextComboInput;
 
     void AttackInputPressed();
 
+    // ==========================================
+    // [신규] 재장전 관련 함수 및 타이머
+    // ==========================================
+    void ReloadInputPressed();
+
+    // 재장전 종료 처리 (몽타주 종료 콜백 / 몽타주가 없을 때는 타이머 콜백에서 공통으로 호출)
+    void CompleteReload();
+
+    // ReloadMontageAsset이 비어있을 때 ReloadTime만큼 대체 재생하는 타이머
+    FTimerHandle ReloadTimerHandle;
+
 public:
-    // �ִϸ��̼� ��Ƽ���̿��� ȣ���� �긴�� �Լ���
+    // 애니메이션 노티파이에서 호출할 브릿지 함수들
     UFUNCTION(BlueprintCallable, Category = "Combat")
     void AdvanceCombo();
 

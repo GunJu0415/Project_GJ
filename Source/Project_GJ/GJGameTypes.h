@@ -69,3 +69,31 @@ struct FWeaponStat : public FTableRowBase
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Asset")
     UAnimMontage* ReloadMontageAsset;
 };
+
+// -----------------------------------------
+// 적(잡몹) 스탯 데이터 테이블 구조체
+// -----------------------------------------
+USTRUCT(BlueprintType)
+struct FEnemyStat : public FTableRowBase
+{
+    GENERATED_BODY()
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stat")
+    float MaxHP = 50.f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stat")
+    float AttackDamage = 10.f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stat")
+    float AttackRange = 150.f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stat")
+    float DetectionRange = 800.f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stat")
+    float AttackCooldown = 1.5f;
+
+    // 추적 이동 속도 (CharacterMovement의 MaxWalkSpeed에 적용됨)
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stat")
+    float MoveSpeed = 300.f;
+};

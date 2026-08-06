@@ -1,27 +1,110 @@
 #include "GJEnemyCharacter.h"
 #include "Components/CapsuleComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
+#include "Kismet/GameplayStatics.h"
+#include "GameFramework/DamageType.h"
+#include "AI/GJEnemyAIController.h"
+#include "TimerManager.h"
 
 AGJEnemyCharacter::AGJEnemyCharacter()
 {
     PrimaryActorTick.bCanEverTick = true;
 
-    // 1. ¸Ê¿¡ ¹èÄ¡µÇ°Å³ª ½ºÆùµÉ ¶§ ÀÚµ¿À¸·Î AI Controller°¡ ºùÀÇÇÏµµ·Ï ¼³Á¤
+    // 1. ë§µì— ë°°ì¹˜ë˜ê±°ë‚˜ ìŠ¤í°ë  ë•Œ ìë™ìœ¼ë¡œ AI Controllerê°€ ë¹™ì˜í•˜ë„ë¡ ì„¤ì •
     AutoPossessAI = EAutoPossessAI::PlacedInWorldOrSpawned;
+    AIControllerClass = AGJEnemyAIController::StaticClass();
 
-    // 2. »÷µå¹é ¿ªÇÒÀÌ¹Ç·Î ÇÃ·¹ÀÌ¾î³ª ¹«±â¿Í Ãæµ¹ÇÒ ¼ö ÀÖµµ·Ï Ä¸½¶ Äİ¸®Àü ¼³Á¤
+    // 2. ìƒŒë“œë°± ì—­í• ì´ë¯€ë¡œ í”Œë ˆì´ì–´ë‚˜ ë¬´ê¸°ì™€ ì¶©ëŒí•  ìˆ˜ ìˆë„ë¡ ìº¡ìŠ ì½œë¦¬ì „ ì„¤ì •
     GetCapsuleComponent()->SetCollisionProfileName(TEXT("Pawn"));
 
-    // 3. Àû Ä³¸¯ÅÍ°¡ ÇÃ·¹ÀÌ¾î¿Í ¹Ğ¸®Áö ¾Êµµ·Ï ¹«°Ô³ª È¸Àü ¼¼ÆÃ (¼±ÅÃ »çÇ×)
+    // 3. ì  ìºë¦­í„°ê°€ í”Œë ˆì´ì–´ì™€ ë°€ë¦¬ì§€ ì•Šë„ë¡ ë¬´ê²Œë‚˜ íšŒì „ ì„¸íŒ… (ì„ íƒ ì‚¬í•­)
     GetCharacterMovement()->bOrientRotationToMovement = true;
+
+    // 4. ê¸°ë³¸ ì¶”ì  ì†ë„ (ì—”ì§„ ê¸°ë³¸ê°’ 600ì€ ì¡ëª¹ì¹˜ê³  ë„ˆë¬´ ë¹ ë¦„ - EnemyDataHandleì„ í• ë‹¹í•˜ë©´ ë®ì–´ì”€)
+    GetCharacterMovement()->MaxWalkSpeed = 300.f;
 }
 
 void AGJEnemyCharacter::BeginPlay()
 {
     Super::BeginPlay();
+
+    ApplyEnemyStat();
+}
+
+void AGJEnemyCharacter::ApplyEnemyStat()
+{
+    if (EnemyDataHandle.IsNull())
+    {
+        return;
+    }
+
+    FEnemyStat* RowData = EnemyDataHandle.GetRow<FEnemyStat>(TEXT("Enemy Initialization"));
+    if (!RowData)
+    {
+        return;
+    }
+
+    MaxHP = RowData->MaxHP;
+    CurrentHP = MaxHP;
+    AttackDamage = RowData->AttackDamage;
+    AttackRange = RowData->AttackRange;
+    DetectionRange = RowData->DetectionRange;
+    AttackCooldown = RowData->AttackCooldown;
+    GetCharacterMovement()->MaxWalkSpeed = RowData->MoveSpeed;
 }
 
 void AGJEnemyCharacter::Tick(float DeltaTime)
 {
     Super::Tick(DeltaTime);
+}
+
+void AGJEnemyCharacter::PerformAttack()
+{
+    if (IsDead())
+    {
+        return;
+    }
+
+    const float CurrentTime = GetWorld()->GetTimeSeconds();
+    if (CurrentTime - LastAttackTime < AttackCooldown)
+    {
+        return;
+    }
+
+    APawn* TargetPlayer = UGameplayStatics::GetPlayerPawn(this, 0);
+    if (!TargetPlayer)
+    {
+        return;
+    }
+
+    LastAttackTime = CurrentTime;
+
+    // ê³µê²© ëŒ€ìƒì„ ë°”ë¼ë³´ë„ë¡ íšŒì „
+    FVector LookDirection = TargetPlayer->GetActorLocation() - GetActorLocation();
+    LookDirection.Z = 0.f;
+    if (!LookDirection.IsNearlyZero())
+    {
+        SetActorRotation(LookDirection.Rotation());
+    }
+
+    if (AttackMontage)
+    {
+        PlayAnimMontage(AttackMontage);
+    }
+
+    // ë…¸í‹°íŒŒì´ ì—†ì´ ê³µê²©ì´ ì‹¤í–‰ëœ ì‹œì  ê¸°ì¤€ìœ¼ë¡œ ì¦‰ì‹œ ë°ë¯¸ì§€ ì ìš© (ê¸°ë³¸ ì¡ëª¹ìš© ë‹¨ìˆœ ì²˜ë¦¬)
+    UGameplayStatics::ApplyDamage(TargetPlayer, AttackDamage, GetController(), this, UDamageType::StaticClass());
+}
+
+void AGJEnemyCharacter::HandleDeath()
+{
+    Super::HandleDeath();
+
+    FTimerHandle DestroyTimerHandle;
+    GetWorldTimerManager().SetTimer(DestroyTimerHandle, this, &AGJEnemyCharacter::DestroySelf, DestroyDelay, false);
+}
+
+void AGJEnemyCharacter::DestroySelf()
+{
+    Destroy();
 }

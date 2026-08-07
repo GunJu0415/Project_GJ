@@ -30,17 +30,29 @@ AGJItemBase::AGJItemBase()
 void AGJItemBase::OnConstruction(const FTransform& Transform)
 {
     Super::OnConstruction(Transform);
+    ApplyItemData();
+}
 
-    if (!ItemDataHandle.IsNull())
+void AGJItemBase::BeginPlay()
+{
+    Super::BeginPlay();
+    ApplyItemData();
+}
+
+void AGJItemBase::ApplyItemData()
+{
+    if (ItemDataHandle.IsNull())
     {
-        if (FItemData* RowData = ItemDataHandle.GetRow<FItemData>(TEXT("Item Initialization")))
-        {
-            ItemStat = *RowData;
+        return;
+    }
 
-            if (RowData->ItemMeshAsset)
-            {
-                ItemMesh->SetStaticMesh(RowData->ItemMeshAsset);
-            }
+    if (FItemData* RowData = ItemDataHandle.GetRow<FItemData>(TEXT("Item Initialization")))
+    {
+        ItemStat = *RowData;
+
+        if (RowData->ItemMeshAsset)
+        {
+            ItemMesh->SetStaticMesh(RowData->ItemMeshAsset);
         }
     }
 }

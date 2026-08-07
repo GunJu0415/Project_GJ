@@ -27,6 +27,13 @@ public:
     virtual void Interact_Implementation(AGJCharacter* Interactor) override;
 
 protected:
+    virtual void BeginPlay() override;
+
+    // ItemDataHandle을 읽어 ItemStat/메시에 반영 (OnConstruction과 BeginPlay 둘 다에서 호출 -
+    // OnConstruction만으로는 데이터 테이블 행 값을 나중에 바꿔도 이미 배치된 액터에 자동 반영되지
+    // 않아서, 플레이 시점엔 항상 최신 값으로 확실히 적용되도록 BeginPlay에서도 다시 읽음)
+    void ApplyItemData();
+
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
     UStaticMeshComponent* ItemMesh;
 

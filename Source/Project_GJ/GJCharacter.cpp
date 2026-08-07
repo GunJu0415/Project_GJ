@@ -54,6 +54,7 @@ void AGJCharacter::BeginPlay()
 {
     Super::BeginPlay();
     LastValidRotation = GetActorRotation();
+    DefaultMaxStepHeight = GetCharacterMovement()->MaxStepHeight;
 
     if (APlayerController* PC = Cast<APlayerController>(GetController()))
     {
@@ -624,6 +625,10 @@ void AGJCharacter::PerformDodge()
         MotionWarpingComponent->AddOrUpdateWarpTargetFromLocation(FName("DodgeTarget"), WarpLocation);
     }
 
+    // 닷지 도중에는 낮은 턱/오르막에 걸려 모션 워핑과 충돌 보정이 다투지 않도록 한계 스텝 높이를 잠깐 늘림
+    // (닷지가 끝나면 OnMontageEndedEvent에서 DefaultMaxStepHeight로 복원함)
+    GetCharacterMovement()->MaxStepHeight = DefaultMaxStepHeight + DodgeExtraStepHeight;
+
     StateComponent->SetState(ECharacterState::Dodge);
     PlayAnimMontage(Montage);
 }
@@ -636,6 +641,9 @@ void AGJCharacter::OnMontageEndedEvent(UAnimMontage* Montage, bool bInterrupted)
         if (Montage == DodgeForwardMontage || Montage == DodgeBackwardMontage ||
             Montage == DodgeLeftMontage || Montage == DodgeRightMontage)
         {
+            // 닷지 중에만 늘려뒀던 한계 스텝 높이를 원래대로 복원 (끊겼을 때도 반드시 복원되도록 상태 체크 밖에서 처리)
+            GetCharacterMovement()->MaxStepHeight = DefaultMaxStepHeight;
+
             if (StateComponent->GetState() == ECharacterState::Dodge)
             {
                 StateComponent->SetState(ECharacterState::Idle);

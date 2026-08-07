@@ -138,6 +138,15 @@ protected:
     UPROPERTY(EditDefaultsOnly, Category = "Animation")
     UAnimMontage* DodgeBackwardMontage;
 
+    // 닷지 도중에는 모션 워핑이 루트모션으로 캐릭터를 계속 밀어붙이는데, 낮은 턱/오르막이
+    // CharacterMovement의 기본 MaxStepHeight보다 살짝 높으면 CMC가 그걸 벽처럼 막힌 것으로 처리해서
+    // 서로 다투다가 튕겨나가는 문제가 생김. 닷지 중에만 한계 스텝 높이를 이만큼 더 올려서 완화함.
+    UPROPERTY(EditAnywhere, Category = "Animation")
+    float DodgeExtraStepHeight = 40.f;
+
+    // BeginPlay에서 캐싱해두는 원래 MaxStepHeight (닷지 끝나면 이 값으로 복원)
+    float DefaultMaxStepHeight = 0.f;
+
     void PerformDodge();
 
     // [수정] 범용 몽타주 종료 처리 함수로 이름 변경

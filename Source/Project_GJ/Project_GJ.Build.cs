@@ -18,13 +18,14 @@ public class Project_GJ : ModuleRules
 			"NavigationSystem",
 			"StateTreeModule",
 			"GameplayStateTreeModule",
-            "EnhancedInput",        // Çâ»óµÈ ÀÔ·Â ½Ã½ºÅÛ¿ë
-			"GameplayAbilities",    // GAS ÄÚ¾î
-			"GameplayTags",         // °ÔÀÓÇÃ·¹ÀÌ ÅÂ±×
-			"GameplayTasks",         // °ÔÀÓÇÃ·¹ÀÌ ÅÂ½ºÅ©
+            "EnhancedInput",        // ï¿½ï¿½ï¿½ï¿½ ï¿½Ô·ï¿½ ï¿½Ã½ï¿½ï¿½Û¿ï¿½
+			"GameplayAbilities",    // GAS ï¿½Ú¾ï¿½
+			"GameplayTags",         // ï¿½ï¿½ï¿½ï¿½ï¿½Ã·ï¿½ï¿½ï¿½ ï¿½Â±ï¿½
+			"GameplayTasks",         // ï¿½ï¿½ï¿½ï¿½ï¿½Ã·ï¿½ï¿½ï¿½ ï¿½Â½ï¿½Å©
             "Niagara",
 			"UMG",
 			"Slate",
+			"SlateCore",
             "MotionWarping"
         });
 

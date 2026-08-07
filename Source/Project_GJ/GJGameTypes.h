@@ -111,3 +111,64 @@ struct FEnemyStat : public FTableRowBase
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stat")
     float AttackWindup = 0.3f;
 };
+
+// -----------------------------------------
+// 아이템 종류
+// -----------------------------------------
+UENUM(BlueprintType)
+enum class EItemType : uint8
+{
+    Consumable,     // 소비형 (포션 등 - 사용하면 사라짐)
+    Equipment,      // 장비형
+    Material,       // 재료
+    Quest,          // 퀘스트 아이템
+    Misc            // 기타
+};
+
+// -----------------------------------------
+// 아이템 데이터 테이블 구조체 (행 이름 = 아이템 ID로 사용)
+// -----------------------------------------
+USTRUCT(BlueprintType)
+struct FItemData : public FTableRowBase
+{
+    GENERATED_BODY()
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Item")
+    FText DisplayName;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Item")
+    EItemType ItemType = EItemType::Misc;
+
+    // 한 슬롯에 최대로 겹쳐 쌓일 수 있는 개수 (1이면 스택 불가 아이템)
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Item")
+    int32 MaxStackSize = 99;
+
+    // 상점에 팔 때 받는 금액
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Item")
+    int32 SellPrice = 0;
+
+    // 상점에서 살 때 지불하는 금액
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Item")
+    int32 BuyPrice = 0;
+
+    // 사용 시 회복되는 HP량 (0이면 HP 회복 없음)
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Item")
+    float HealAmount = 0.f;
+
+    // 사용 시 회복되는 MP량 (0이면 MP 회복 없음)
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Item")
+    float ManaRecoverAmount = 0.f;
+
+    // true면 새 회차(런)를 시작해도 인벤토리에서 사라지지 않음(예: 영구 재화/장비).
+    // false면 회차가 바뀌면 사라짐(예: 일반 소모품/재료) - 기본값
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Item")
+    bool bPersistAcrossRuns = false;
+
+    // 인벤토리 UI 등에 쓸 아이템 아이콘(2D 이미지)
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Asset")
+    UTexture2D* Icon = nullptr;
+
+    // 월드에 배치될 때 쓸 스태틱 메시. AGJItemBase가 OnConstruction에서 자동으로 반영함
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Asset")
+    UStaticMesh* ItemMeshAsset = nullptr;
+};

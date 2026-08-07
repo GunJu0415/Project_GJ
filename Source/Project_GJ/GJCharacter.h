@@ -20,6 +20,8 @@ class AGJWeaponBase;
 class UCharacterStateComponent;
 class UUserWidget;
 class UGJPlayerHUDWidget;
+class UGJInventoryComponent;
+class UGJInventoryWidget;
 
 enum class EDodgeType
 {
@@ -39,6 +41,7 @@ public:
 
 protected:
     virtual void BeginPlay() override;
+    virtual void HandleDeath() override;
 
 public:
     virtual void Tick(float DeltaTime) override;
@@ -85,6 +88,19 @@ protected:
     // ==========================================
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Input")
     UInputAction* ReloadAction;
+
+    // ==========================================
+    // [신규] 상호작용 입력 (아이템 습득 / 나중에 문·버튼 등에도 재사용).
+    // BP_GJCharacter 디테일 패널에서 만들어둔 IA_Interact를 할당해야 동작함.
+    // ==========================================
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Input")
+    UInputAction* InteractAction;
+
+    // ==========================================
+    // [신규] 인벤토리 열기/닫기 입력 (Tab). 에디터에서 만들어둔 IA를 할당해야 동작함.
+    // ==========================================
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Input")
+    UInputAction* InventoryToggleAction;
 
     // 카메라 오프셋 설정 변수
     UPROPERTY(EditAnywhere, Category = "Camera|Offset")
@@ -156,6 +172,12 @@ protected:
     // ReloadMontageAsset이 비어있을 때 ReloadTime만큼 대체 재생하는 타이머
     FTimerHandle ReloadTimerHandle;
 
+    // ==========================================
+    // [신규] 상호작용 (아이템 습득 등)
+    // ==========================================
+    // 상호작용 범위(콜리전) 안에 있는 IGJInteractable 구현 액터를 찾아 Interact()를 호출함
+    void InteractInputPressed();
+
 public:
     // 애니메이션 노티파이에서 호출할 브릿지 함수들
     UFUNCTION(BlueprintCallable, Category = "Combat")
@@ -222,4 +244,24 @@ protected:
     void OnHPChanged(float DamageAmount, AActor* DamageCauser);
 
     void UpdatePlayerHUD();
+
+    // 인벤토리 데이터/로직 (버튼 등은 이 컴포넌트에 직접 연결해서 쓰면 됨)
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Inventory")
+    UGJInventoryComponent* InventoryComponent;
+
+    // 인벤토리 그리드 UI. BP_GJCharacter 디테일 패널에서 WBP_Inventory 같은 위젯 블루프린트를 할당해야 함
+    UPROPERTY(EditDefaultsOnly, Category = "Inventory")
+    TSubclassOf<UGJInventoryWidget> InventoryWidgetClass;
+
+    UPROPERTY()
+    UGJInventoryWidget* InventoryWidgetInstance;
+
+public:
+    // Tab 입력에 바인딩됨 - 인벤토리 위젯을 열고 닫으면서 게임을 일시정지/재개함.
+    // public인 이유: 인벤토리 위젯이 자기 자신의 키 입력 처리(NativeOnKeyDown)에서 Tab을 감지해
+    // 직접 이 함수를 호출해서 닫음 (자세한 이유는 .cpp 주석 참고)
+    UFUNCTION(BlueprintCallable, Category = "Inventory")
+    void ToggleInventory();
+
+    FORCEINLINE UGJInventoryComponent* GetInventoryComponent() const { return InventoryComponent; }
 };

@@ -14,6 +14,11 @@
 #include "GJWeaponBase.h"
 #include "Blueprint/UserWidget.h"
 #include "GJPlayerHUDWidget.h"
+#include "GJInventoryComponent.h"
+#include "GJInteractable.h"
+#include "GJInventoryWidget.h"
+#include "Kismet/GameplayStatics.h"
+#include "GameFramework/PlayerController.h"
 
 AGJCharacter::AGJCharacter()
 {
@@ -35,6 +40,8 @@ AGJCharacter::AGJCharacter()
     TopDownCameraComponent = CreateDefaultSubobject<UCameraComponent>(TEXT("TopDownCamera"));
     TopDownCameraComponent->SetupAttachment(CameraBoom);
     TopDownCameraComponent->bUsePawnControlRotation = false;
+
+    InventoryComponent = CreateDefaultSubobject<UGJInventoryComponent>(TEXT("InventoryComponent"));
 
     CurrentLevel = 1;
 
@@ -100,6 +107,74 @@ void AGJCharacter::BeginPlay()
     UpdatePlayerHUD();
 }
 
+void AGJCharacter::HandleDeath()
+{
+    Super::HandleDeath();
+
+    // 죽는 순간 연사 중이었다면 즉시 멈춤 (그렇지 않으면 Tick에서 TryAutoFire가 계속 호출됨 -
+    // Dead 상태 체크로 어차피 막히긴 하지만, 아예 호출 자체를 멈추는 게 더 깔끔함)
+    bIsAutoFiring = false;
+}
+
+// ==========================================
+// [신규] 인벤토리 열기/닫기
+// ==========================================
+void AGJCharacter::ToggleInventory()
+{
+    if (!InventoryWidgetClass) return;
+
+    APlayerController* PC = Cast<APlayerController>(GetController());
+    if (!PC) return;
+
+    // 위젯은 처음 열 때 1회만 생성해서 재사용함
+    if (!InventoryWidgetInstance)
+    {
+        InventoryWidgetInstance = CreateWidget<UGJInventoryWidget>(PC, InventoryWidgetClass);
+        if (InventoryWidgetInstance)
+        {
+            InventoryWidgetInstance->InitializeInventory(InventoryComponent);
+        }
+    }
+
+    if (!InventoryWidgetInstance) return;
+
+    if (InventoryWidgetInstance->IsInViewport())
+    {
+        // 닫기: 위젯 제거 + 일시정지 해제 + 입력을 다시 게임으로만 돌림
+        InventoryWidgetInstance->RemoveFromParent();
+        UGameplayStatics::SetGamePaused(this, false);
+
+        // FInputModeGameOnly 기본값(bConsumeCaptureMouseDown=true)은 마우스 캡처를 다시 잡는 그 클릭을
+        // "캡처용으로만" 소모하고 게임 입력으로는 넘기지 않음 - 그래서 인벤토리를 닫은 직후의 클릭이
+        // 간헐적으로 씹혔던 것. false로 줘서 캡처를 다시 잡는 클릭도 그대로 게임 입력으로 전달되게 함.
+        FInputModeGameOnly InputMode;
+        InputMode.SetConsumeCaptureMouseDown(false);
+        PC->SetInputMode(InputMode);
+    }
+    else
+    {
+        // 열기: 위젯 표시 + 일시정지(SetGamePaused는 PlayerController::SetPause를 거는 것뿐이라
+        // 매 프레임 비용이 드는 방식이 아니라 액터 Tick 스케줄 자체를 건너뛰게 하는, 사실상 공짜에 가까운 방법임.
+        // UI/Slate는 월드 Tick과 별개라 정지 중에도 계속 반응함)
+        InventoryWidgetInstance->AddToViewport();
+        UGameplayStatics::SetGamePaused(this, true);
+
+        // 입력 모드가 UI로 바뀌는 과정에서 마우스 버튼 "뗌(release)" 이벤트가 캐릭터한테
+        // 안 들어가는 경우가 있어서, 열 때 연사 중이었다면 강제로 꺼줌 - 안 그러면 인벤토리를
+        // 닫고 Tick이 다시 돌 때 bIsAutoFiring이 true로 박혀있어서 무한 연사가 됨
+        bIsAutoFiring = false;
+
+        // 위젯에 키보드 포커스를 줌 - Tab을 "닫기"로 처리하는 건 이제 이 위젯의
+        // NativeOnKeyDown(GJInventoryWidget.cpp)이 직접 담당함(포커스가 있어야 키 이벤트가 위젯으로 들어옴).
+        // 일시정지 중에는 캐릭터가 물고 있는 Enhanced Input 액션 평가가 안정적으로 안 들어올 수 있어서,
+        // 게임 로직과 무관한 UI 레이어(Slate 키 이벤트)에서 직접 처리하는 쪽이 더 확실함.
+        FInputModeGameAndUI InputMode;
+        InputMode.SetWidgetToFocus(InventoryWidgetInstance->TakeWidget());
+        InputMode.SetHideCursorDuringCapture(false);
+        PC->SetInputMode(InputMode);
+    }
+}
+
 void AGJCharacter::Tick(float DeltaTime)
 {
     Super::Tick(DeltaTime);
@@ -134,7 +209,7 @@ void AGJCharacter::UpdateMouseState()
 
 void AGJCharacter::UpdateCharacterRotation()
 {
-    if (StateComponent && StateComponent->GetState() == ECharacterState::Dodge)
+    if (StateComponent && (StateComponent->GetState() == ECharacterState::Dodge || StateComponent->GetState() == ECharacterState::Dead))
     {
         return;
     }
@@ -244,6 +319,18 @@ void AGJCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCompone
         {
             EnhancedInput->BindAction(ReloadAction, ETriggerEvent::Started, this, &AGJCharacter::ReloadInputPressed);
         }
+
+        // [신규] 상호작용 입력 바인딩 (아이템 습득 / 나중에 문·버튼 등에도 재사용)
+        if (InteractAction)
+        {
+            EnhancedInput->BindAction(InteractAction, ETriggerEvent::Started, this, &AGJCharacter::InteractInputPressed);
+        }
+
+        // [신규] 인벤토리 열기/닫기 입력 바인딩 (Tab)
+        if (InventoryToggleAction)
+        {
+            EnhancedInput->BindAction(InventoryToggleAction, ETriggerEvent::Started, this, &AGJCharacter::ToggleInventory);
+        }
     }
 }
 
@@ -276,6 +363,7 @@ void AGJCharacter::AttackInputPressed()
     }
 
     if (!StateComponent) return;
+    if (StateComponent->GetState() == ECharacterState::Dead) return;
     if (StateComponent->GetState() == ECharacterState::Dodge) return;
     if (StateComponent->GetState() == ECharacterState::Reloading) return;
 
@@ -386,6 +474,7 @@ void AGJCharacter::PerformFire()
 void AGJCharacter::TryAutoFire()
 {
     if (!EquippedWeapon || !StateComponent) return;
+    if (StateComponent->GetState() == ECharacterState::Dead) return;
     if (StateComponent->GetState() == ECharacterState::Reloading) return;
 
     if (AGJWeapon_Ranged* RangedWeapon = Cast<AGJWeapon_Ranged>(EquippedWeapon))
@@ -461,6 +550,24 @@ void AGJCharacter::CompleteReload()
 }
 
 // ==========================================
+// [신규] 상호작용 (아이템 습득 등)
+// ==========================================
+void AGJCharacter::InteractInputPressed()
+{
+    TArray<AActor*> OverlappingActors;
+    GetCapsuleComponent()->GetOverlappingActors(OverlappingActors);
+
+    for (AActor* Actor : OverlappingActors)
+    {
+        if (Actor && Actor->Implements<UGJInteractable>())
+        {
+            IGJInteractable::Execute_Interact(Actor, this);
+            return; // 가장 먼저 찾은 대상 하나만 상호작용
+        }
+    }
+}
+
+// ==========================================
 // 기존 로직들
 // ==========================================
 void AGJCharacter::PerformDodge()
@@ -496,7 +603,25 @@ void AGJCharacter::PerformDodge()
 
     if (MotionWarpingComponent)
     {
-        MotionWarpingComponent->AddOrUpdateWarpTargetFromLocation(FName("DodgeTarget"), GetActorLocation() + WorldDirection * DodgeDistance);
+        FVector WarpLocation = GetActorLocation() + WorldDirection * DodgeDistance;
+
+        // 목적지에 오르막/턱이 있으면 시작 지점 높이를 그대로 워프 타깃 Z로 쓰는 게 실제 바닥과 어긋나서,
+        // 무브먼트 컴포넌트의 바닥/계단 보정과 모션 워핑이 서로 다른 높이로 캐릭터를 끌어당기며
+        // 충돌 - 움찔거리다가 튕겨나가는 원인이 됨. 목적지 위아래로 바닥을 트레이스해서 Z를 보정.
+        const float CapsuleHalfHeight = GetCapsuleComponent()->GetScaledCapsuleHalfHeight();
+        const FVector TraceStart = WarpLocation + FVector(0.f, 0.f, CapsuleHalfHeight + 100.f);
+        const FVector TraceEnd = WarpLocation - FVector(0.f, 0.f, CapsuleHalfHeight + 200.f);
+
+        FCollisionQueryParams QueryParams;
+        QueryParams.AddIgnoredActor(this);
+
+        FHitResult HitResult;
+        if (GetWorld()->LineTraceSingleByChannel(HitResult, TraceStart, TraceEnd, ECC_Visibility, QueryParams))
+        {
+            WarpLocation.Z = HitResult.ImpactPoint.Z + CapsuleHalfHeight;
+        }
+
+        MotionWarpingComponent->AddOrUpdateWarpTargetFromLocation(FName("DodgeTarget"), WarpLocation);
     }
 
     StateComponent->SetState(ECharacterState::Dodge);

@@ -19,6 +19,7 @@ class UDataTable;
 class AGJWeaponBase;
 class UCharacterStateComponent;
 class UUserWidget;
+class UGJPlayerHUDWidget;
 
 enum class EDodgeType
 {
@@ -173,6 +174,13 @@ protected:
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Character Stat")
     FCharacterStat CurrentCharacterStat;
 
+    // MP - 재장전할 때마다 소비됨 (소비량 = 실제로 채워지는 발수 x 장착 무기의 WeaponStat.MPCostPerAmmo)
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Character Stat")
+    float MaxMP = 50.f;
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Character Stat")
+    float CurrentMP = 50.f;
+
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Character Stat")
     int32 CurrentLevel;
 
@@ -200,4 +208,18 @@ protected:
 
     UPROPERTY()
     UUserWidget* AmmoWidgetInstance;
+
+    // 좌측 상단 HP/MP 바 HUD. BP_GJCharacter 디테일 패널에서 WBP_PlayerHUD 같은 위젯 블루프린트를 할당하면
+    // BeginPlay에서 자동으로 생성되어 화면에 뜸 (레벨과 무관하게 캐릭터가 스폰되는 곳이면 어디서든 동작함)
+    UPROPERTY(EditDefaultsOnly, Category = "UI")
+    TSubclassOf<UGJPlayerHUDWidget> PlayerHUDWidgetClass;
+
+    UPROPERTY()
+    UGJPlayerHUDWidget* PlayerHUDWidgetInstance;
+
+    // OnDamaged 델리게이트에 바인딩되는 핸들러 - HP 바를 최신 HP로 갱신함
+    UFUNCTION()
+    void OnHPChanged(float DamageAmount, AActor* DamageCauser);
+
+    void UpdatePlayerHUD();
 };

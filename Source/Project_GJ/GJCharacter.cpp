@@ -13,6 +13,7 @@
 #include "GJWeapon_Ranged.h"
 #include "GJWeaponBase.h"
 #include "Blueprint/UserWidget.h"
+#include "GJPlayerHUDWidget.h"
 
 AGJCharacter::AGJCharacter()
 {
@@ -81,6 +82,22 @@ void AGJCharacter::BeginPlay()
             }
         }
     }
+
+    // 좌측 상단 HP/MP 바 HUD 자동 생성 및 화면 표시
+    if (PlayerHUDWidgetClass)
+    {
+        if (APlayerController* PC = Cast<APlayerController>(GetController()))
+        {
+            PlayerHUDWidgetInstance = CreateWidget<UGJPlayerHUDWidget>(PC, PlayerHUDWidgetClass);
+            if (PlayerHUDWidgetInstance)
+            {
+                PlayerHUDWidgetInstance->AddToViewport();
+            }
+        }
+    }
+
+    OnDamaged.AddDynamic(this, &AGJCharacter::OnHPChanged);
+    UpdatePlayerHUD();
 }
 
 void AGJCharacter::Tick(float DeltaTime)
@@ -395,7 +412,24 @@ void AGJCharacter::ReloadInputPressed()
     AGJWeapon_Ranged* RangedWeapon = Cast<AGJWeapon_Ranged>(EquippedWeapon);
     if (!RangedWeapon || !RangedWeapon->CanReload()) return;
 
-    RangedWeapon->StartReload();
+    // 꽉 채우는 데 필요한 발수 (CanReload()를 통과했으므로 항상 1발 이상)
+    const int32 BulletsNeeded = RangedWeapon->GetWeaponStat().MagazineSize - RangedWeapon->GetCurrentAmmo();
+    const float MPCostPerAmmo = RangedWeapon->GetWeaponStat().MPCostPerAmmo;
+
+    // MP가 허락하는 한도까지만 채움 - 꼭 탄창을 다 채울 MP가 없어도 되고, 있는 만큼만 리필됨
+    // (MPCostPerAmmo가 0이면 MP 소모 없는 무기이므로 항상 꽉 채움)
+    const int32 BulletsToRefill = (MPCostPerAmmo > 0.f)
+        ? FMath::Min(BulletsNeeded, FMath::FloorToInt(CurrentMP / MPCostPerAmmo))
+        : BulletsNeeded;
+
+    // MP가 1발 채울 만큼도 없으면 재장전 자체를 시작하지 않음
+    if (BulletsToRefill <= 0) return;
+
+    const float MPCost = MPCostPerAmmo * BulletsToRefill;
+    CurrentMP = FMath::Clamp(CurrentMP - MPCost, 0.f, MaxMP);
+    UpdatePlayerHUD();
+
+    RangedWeapon->StartReload(BulletsToRefill);
     StateComponent->SetState(ECharacterState::Reloading);
 
     UAnimMontage* ReloadMontage = RangedWeapon->GetReloadMontage();
@@ -509,8 +543,29 @@ void AGJCharacter::UpdateCharacterStat(int32 NewLevel)
 
             MaxHP = CurrentCharacterStat.MaxHP;
             CurrentHP = MaxHP;
+
+            MaxMP = CurrentCharacterStat.MaxMP;
+            CurrentMP = MaxMP;
         }
     }
+
+    UpdatePlayerHUD();
+}
+
+void AGJCharacter::OnHPChanged(float DamageAmount, AActor* DamageCauser)
+{
+    UpdatePlayerHUD();
+}
+
+void AGJCharacter::UpdatePlayerHUD()
+{
+    if (!PlayerHUDWidgetInstance)
+    {
+        return;
+    }
+
+    PlayerHUDWidgetInstance->UpdateHP(CurrentHP, MaxHP);
+    PlayerHUDWidgetInstance->UpdateMP(CurrentMP, MaxMP);
 }
 
 void AGJCharacter::EquipWeapon()

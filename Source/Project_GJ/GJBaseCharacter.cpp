@@ -74,5 +74,8 @@ void AGJBaseCharacter::HandleDeath()
     GetCharacterMovement()->DisableMovement();
     GetCapsuleComponent()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 
+    // 사망 후에는 총알 등 어떤 콜리전 판정도 받지 않도록 메시 콜리전도 함께 꺼줌
+    GetMesh()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+
     OnDeath();
 }

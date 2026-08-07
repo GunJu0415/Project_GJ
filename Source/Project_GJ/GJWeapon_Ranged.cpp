@@ -57,14 +57,16 @@ bool AGJWeapon_Ranged::CanReload() const
     return !bIsReloading && CurrentAmmo < WeaponStat.MagazineSize;
 }
 
-void AGJWeapon_Ranged::StartReload()
+void AGJWeapon_Ranged::StartReload(int32 InBulletsToRefill)
 {
     bIsReloading = true;
+    PendingRefillAmount = InBulletsToRefill;
 }
 
 void AGJWeapon_Ranged::FinishReload()
 {
-    CurrentAmmo = WeaponStat.MagazineSize;
+    CurrentAmmo = FMath::Clamp(CurrentAmmo + PendingRefillAmount, 0, WeaponStat.MagazineSize);
+    PendingRefillAmount = 0;
     bIsReloading = false;
 
     OnAmmoChanged.Broadcast(CurrentAmmo, WeaponStat.MagazineSize);

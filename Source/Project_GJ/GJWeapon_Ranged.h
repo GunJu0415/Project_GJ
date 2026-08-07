@@ -30,8 +30,9 @@ public:
     bool CanReload() const;
 
     // 재장전 시작 (탄창을 채우는 시점은 FinishReload에서 처리 - 몽타주/타이머 종료 후 호출됨)
+    // InBulletsToRefill: 실제로 채워질 발수. MP가 부족하면 필요한 발수보다 적게 넘어올 수 있음(부분 재장전).
     UFUNCTION(BlueprintCallable, Category = "Weapon|Ammo")
-    void StartReload();
+    void StartReload(int32 InBulletsToRefill);
 
     // 재장전 완료 처리 (탄창을 최대치로 채움)
     UFUNCTION(BlueprintCallable, Category = "Weapon|Ammo")
@@ -64,6 +65,9 @@ protected:
 
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Weapon|Ammo")
     bool bIsReloading = false;
+
+    // 이번 재장전에서 실제로 채워질 발수 (MP가 허락하는 한도까지만 - StartReload에서 세팅, FinishReload에서 사용 후 초기화)
+    int32 PendingRefillAmount = 0;
 
     // 마지막으로 발사한 시각 (WeaponStat.FireInterval과 비교해 연사 속도를 제한하는 데 사용)
     float LastFireTime = -100.f;

@@ -5,6 +5,11 @@
 #include "GameFramework/DamageType.h"
 #include "AI/GJEnemyAIController.h"
 #include "TimerManager.h"
+#include "AIController.h"
+#include "BrainComponent.h"
+#include "UObject/ConstructorHelpers.h"
+#include "Components/WidgetComponent.h"
+#include "GJHealthBarWidget.h"
 
 AGJEnemyCharacter::AGJEnemyCharacter()
 {
@@ -22,6 +27,21 @@ AGJEnemyCharacter::AGJEnemyCharacter()
 
     // 4. 기본 추적 속도 (엔진 기본값 600은 잡몹치고 너무 빠름 - EnemyDataHandle을 할당하면 덮어씀)
     GetCharacterMovement()->MaxWalkSpeed = 300.f;
+
+    // 5. 전용 데스 애니메이션이 아직 없어서, 이미 공격에 쓰고 있는 MM_Rifle_Fire_Montage를 임시로 재활용함
+    // (BP 디테일 패널에서 DeathMontage 값을 바꾸면 언제든 다른 애님으로 교체 가능)
+    static ConstructorHelpers::FObjectFinder<UAnimMontage> DeathMontageFinder(TEXT("/Game/GJ/Animation/MM_Rifle_Fire_Montage.MM_Rifle_Fire_Montage"));
+    if (DeathMontageFinder.Succeeded())
+    {
+        DeathMontage = DeathMontageFinder.Object;
+    }
+
+    // 6. 머리 위 체력바 위젯 컴포넌트 - 항상 화면을 바라보는 Screen 스페이스라 탑다운 카메라 각도와 무관하게 잘 보임
+    HealthBarWidgetComponent = CreateDefaultSubobject<UWidgetComponent>(TEXT("HealthBarWidgetComponent"));
+    HealthBarWidgetComponent->SetupAttachment(GetRootComponent());
+    HealthBarWidgetComponent->SetWidgetSpace(EWidgetSpace::Screen);
+    HealthBarWidgetComponent->SetDrawSize(FVector2D(120.f, 16.f));
+    HealthBarWidgetComponent->SetRelativeLocation(FVector(0.f, 0.f, 110.f));
 }
 
 void AGJEnemyCharacter::BeginPlay()
@@ -29,6 +49,10 @@ void AGJEnemyCharacter::BeginPlay()
     Super::BeginPlay();
 
     ApplyEnemyStat();
+
+    // 체력바 위젯을 데이터 테이블로 세팅된 최종 MaxHP 기준으로 초기화하고, 이후 피격마다 갱신되도록 바인딩
+    OnDamaged.AddDynamic(this, &AGJEnemyCharacter::OnHealthChanged);
+    UpdateHealthBarWidget();
 }
 
 void AGJEnemyCharacter::ApplyEnemyStat()
@@ -50,6 +74,7 @@ void AGJEnemyCharacter::ApplyEnemyStat()
     AttackRange = RowData->AttackRange;
     DetectionRange = RowData->DetectionRange;
     AttackCooldown = RowData->AttackCooldown;
+    AttackWindup = RowData->AttackWindup;
     GetCharacterMovement()->MaxWalkSpeed = RowData->MoveSpeed;
 }
 
@@ -78,6 +103,7 @@ void AGJEnemyCharacter::PerformAttack()
     }
 
     LastAttackTime = CurrentTime;
+    PendingAttackTarget = TargetPlayer;
 
     // 공격 대상을 바라보도록 회전
     FVector LookDirection = TargetPlayer->GetActorLocation() - GetActorLocation();
@@ -92,13 +118,62 @@ void AGJEnemyCharacter::PerformAttack()
         PlayAnimMontage(AttackMontage);
     }
 
-    // 노티파이 없이 공격이 실행된 시점 기준으로 즉시 데미지 적용 (기본 잡몹용 단순 처리)
+    // 공격을 결정한 즉시 데미지를 넣지 않고, 몽타주의 타격 타이밍에 맞춘 선딜레이(AttackWindup) 후에 판정함
+    GetWorldTimerManager().SetTimer(AttackWindupTimerHandle, this, &AGJEnemyCharacter::ApplyAttackDamage, AttackWindup, false);
+}
+
+void AGJEnemyCharacter::ApplyAttackDamage()
+{
+    if (IsDead())
+    {
+        return;
+    }
+
+    APawn* TargetPlayer = PendingAttackTarget.Get();
+    if (!TargetPlayer)
+    {
+        return;
+    }
+
+    // 선딜레이 동안 플레이어가 사거리 밖으로 빠져나갔으면 헛스윙 처리 (약간의 여유값 포함)
+    const float EffectiveRange = AttackRange + 50.f;
+    const float DistSq = FVector::DistSquared(GetActorLocation(), TargetPlayer->GetActorLocation());
+    if (DistSq > FMath::Square(EffectiveRange))
+    {
+        return;
+    }
+
     UGameplayStatics::ApplyDamage(TargetPlayer, AttackDamage, GetController(), this, UDamageType::StaticClass());
 }
 
 void AGJEnemyCharacter::HandleDeath()
 {
     Super::HandleDeath();
+
+    // 죽는 순간 대기 중이던 공격 판정이 있다면 취소
+    GetWorldTimerManager().ClearTimer(AttackWindupTimerHandle);
+
+    // 죽은 뒤에는 더 이상 추적/공격 판단을 할 필요가 없으므로 비헤이비어 트리 로직과 이동을 정지시킴
+    if (AAIController* AICon = Cast<AAIController>(GetController()))
+    {
+        if (UBrainComponent* Brain = AICon->GetBrainComponent())
+        {
+            Brain->StopLogic(TEXT("Dead"));
+        }
+        AICon->StopMovement();
+    }
+
+    // 전용 데스 애니메이션이 없어서 임시로 DeathMontage(기본값: MM_Rifle_Fire_Montage 재활용)를 재생
+    if (DeathMontage)
+    {
+        PlayAnimMontage(DeathMontage);
+    }
+
+    // 죽었으니 체력바는 더 이상 표시하지 않음
+    if (HealthBarWidgetComponent)
+    {
+        HealthBarWidgetComponent->SetVisibility(false);
+    }
 
     FTimerHandle DestroyTimerHandle;
     GetWorldTimerManager().SetTimer(DestroyTimerHandle, this, &AGJEnemyCharacter::DestroySelf, DestroyDelay, false);
@@ -107,4 +182,22 @@ void AGJEnemyCharacter::HandleDeath()
 void AGJEnemyCharacter::DestroySelf()
 {
     Destroy();
+}
+
+void AGJEnemyCharacter::OnHealthChanged(float DamageAmount, AActor* DamageCauser)
+{
+    UpdateHealthBarWidget();
+}
+
+void AGJEnemyCharacter::UpdateHealthBarWidget()
+{
+    if (!HealthBarWidgetComponent)
+    {
+        return;
+    }
+
+    if (UGJHealthBarWidget* HealthBarWidget = Cast<UGJHealthBarWidget>(HealthBarWidgetComponent->GetUserWidgetObject()))
+    {
+        HealthBarWidget->UpdateHealth(CurrentHP, MaxHP);
+    }
 }

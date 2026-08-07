@@ -15,6 +15,10 @@ struct FCharacterStat : public FTableRowBase
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stat")
     float MaxHP = 100.0f;
 
+    // 최대 MP. 재장전 시 무기 데이터 테이블의 MPCostPerAmmo x 채워지는 발수만큼 소비됨.
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stat")
+    float MaxMP = 50.0f;
+
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stat")
     float BaseAttackPower = 10.0f;
 
@@ -58,6 +62,12 @@ struct FWeaponStat : public FTableRowBase
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "WeaponStat")
     float ReloadTime = 1.5f;
 
+    // 총알 1발당 소비되는 MP. 재장전 시 실제로 채워지는 발수(MagazineSize - 남은 탄약)만큼 곱해져 소비됨.
+    // 플레이어의 MaxMP/CurrentMP는 DT_CharacterStat(FCharacterStat)에서 관리됨.
+    // 밸런스 요소: 강한 무기일수록 이 값을 크게 잡아 재장전 남발을 막을 수 있음.
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "WeaponStat")
+    float MPCostPerAmmo = 1.f;
+
     // 에셋 정보도 여기에 통합
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Asset")
     USkeletalMesh* WeaponMeshAsset;
@@ -96,4 +106,8 @@ struct FEnemyStat : public FTableRowBase
     // 추적 이동 속도 (CharacterMovement의 MaxWalkSpeed에 적용됨)
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stat")
     float MoveSpeed = 300.f;
+
+    // 공격 판정(데미지 적용)까지의 선딜레이(초). 재생 중인 몽타주의 실제 타격 타이밍에 맞춰 조절.
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stat")
+    float AttackWindup = 0.3f;
 };

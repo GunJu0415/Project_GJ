@@ -31,6 +31,14 @@ enum class EDodgeType
     Right
 };
 
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnWeaponSlotsChangedSignature);
+
+// 지금 손에 든 무기가 원거리 무기일 때, 그 무기의 탄약이 바뀔 때마다(발사/재장전) 또는 무기
+// 자체가 바뀔 때(스왑)마다 브로드캐스트됨. 탄약 UI는 특정 무기 인스턴스의 OnAmmoChanged에
+// 직접 바인딩하지 않고 이 델리게이트 하나만 구독하면 됨 - 어떤 무기로 스왑되든 재바인딩은
+// AGJCharacter::CommitWeaponSwap이 알아서 처리함.
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnActiveWeaponAmmoChangedSignature, int32, CurrentAmmo, int32, MaxAmmo);
+
 UCLASS()
 class PROJECT_GJ_API AGJCharacter : public AGJBaseCharacter
 {
@@ -223,15 +231,76 @@ protected:
     UPROPERTY(EditDefaultsOnly, Category = "Weapon")
     TSubclassOf<AGJWeaponBase> DefaultWeaponClass;
 
+    // 지금 손에 들려 있는(공격/재장전에 실제로 쓰이는) 무기 - WeaponSlots[CurrentWeaponSlotIndex]를 가리킴
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Weapon")
     AGJWeaponBase* EquippedWeapon;
 
+    // 동시에 소지(장착)할 수 있는 무기 슬롯 (0번/1번, 1·2번 키로 스왑). 무기는 데이터 테이블 스택이
+    // 아니라 각각 별개의 액터 인스턴스를 그대로 들고 있음 - 같은 무기를 두 개 주워도 서로 다른 오브젝트.
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Weapon")
+    TArray<AGJWeaponBase*> WeaponSlots;
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Weapon")
+    int32 CurrentWeaponSlotIndex = 0;
+
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Input")
+    UInputAction* WeaponSlot1Action;
+
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Input")
+    UInputAction* WeaponSlot2Action;
+
+    void SwapToWeaponSlot1();
+    void SwapToWeaponSlot2();
+
     void EquipWeapon();
+
+    // WeaponSlots[SlotIndex]를 실제로 손(WeaponSocket)에 부착해 활성 무기로 바꿈 - 이전에 들고 있던
+    // 무기는 버려지지 않고 숨겨진 채 계속 그 슬롯에 남아있음(스왑으로 다시 꺼낼 수 있음)
+    void CommitWeaponSwap(int32 SlotIndex);
+
+    // 무기 슬롯 2개가 이미 다 찼을 때 새 무기를 주우면, 현재 활성 슬롯의 무기를 필드에 떨어뜨리고
+    // 그 자리를 비움 (파괴하지 않음 - 다시 주울 수 있음)
+    void DropWeapon(int32 SlotIndex);
+
+    // 지금 손에 든 원거리 무기의 OnAmmoChanged를 그대로 OnActiveWeaponAmmoChanged로 흘려보냄
+    // (탄약 UI가 무기 인스턴스가 아니라 캐릭터의 델리게이트 하나만 구독하면 되게 하기 위함)
+    UFUNCTION()
+    void HandleActiveWeaponAmmoChanged(int32 CurrentAmmo, int32 MaxAmmo);
 
 public:
     // UI(UMG) 등에서 현재 장착 무기를 가져다 쓰기 위한 getter (예: 탄약 표시하려면 여기서 받아 GJWeapon_Ranged로 캐스팅)
     UFUNCTION(BlueprintPure, Category = "Weapon")
     AGJWeaponBase* GetEquippedWeapon() const { return EquippedWeapon; }
+
+    UFUNCTION(BlueprintPure, Category = "Weapon")
+    AGJWeaponBase* GetWeaponInSlot(int32 SlotIndex) const;
+
+    UFUNCTION(BlueprintPure, Category = "Weapon")
+    int32 GetCurrentWeaponSlotIndex() const { return CurrentWeaponSlotIndex; }
+
+    // 필드에 놓인 무기(AGJWeaponBase)가 E로 상호작용됐을 때 호출됨 - 빈 슬롯을 찾아 장착하고,
+    // 슬롯이 다 찼으면 현재 활성 슬롯의 무기를 필드에 떨어뜨린 뒤 그 자리를 새 무기로 채움
+    UFUNCTION(BlueprintCallable, Category = "Weapon")
+    bool PickUpWeapon(AGJWeaponBase* NewWeapon);
+
+    // 지정한 슬롯(0/1)의 무기로 전환 - 1·2번 키 입력과 인벤토리 무기 페이지 클릭 양쪽에서 호출됨.
+    // 무기의 SwapMontage가 있으면 그 몽타주를 재생하는 동안 WeaponSwap 상태로 다른 입력을 막음.
+    UFUNCTION(BlueprintCallable, Category = "Weapon")
+    void SwapToWeaponSlot(int32 SlotIndex);
+
+    // 두 무기 슬롯의 내용을 서로 바꿈 (무기 페이지에서 아이콘을 드래그해서 자리를 바꿀 때 사용).
+    // SwapToWeaponSlot과 달리 "어느 무기를 손에 들지"는 안 바꾸고 슬롯 배치(1번/2번)만 바꿈.
+    UFUNCTION(BlueprintCallable, Category = "Weapon")
+    bool SwapWeaponSlots(int32 IndexA, int32 IndexB);
+
+    // 무기 슬롯이 바뀔 때(습득/스왑/드랍)마다 브로드캐스트 - 인벤토리 무기 페이지 UI 갱신용
+    UPROPERTY(BlueprintAssignable, Category = "Weapon")
+    FOnWeaponSlotsChangedSignature OnWeaponSlotsChanged;
+
+    // 지금 활성화된 무기의 탄약 정보 - 탄약 UI는 이 델리게이트 하나만 구독하면 어떤 무기로
+    // 스왑되든 항상 정확한 값을 받음 (자세한 설명은 델리게이트 타입 선언부 주석 참고)
+    UPROPERTY(BlueprintAssignable, Category = "Weapon")
+    FOnActiveWeaponAmmoChangedSignature OnActiveWeaponAmmoChanged;
 
 protected:
     // 탄약 UI 등 HUD 위젯 클래스. BP_GJCharacter 디테일 패널에서 WBP_AmmoUI 같은 위젯 블루프린트를 할당하면

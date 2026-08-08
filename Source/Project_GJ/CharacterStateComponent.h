@@ -7,7 +7,7 @@
 #include "CharacterStateComponent.generated.h"
 
 
-// 1. °ü¸®ÇÒ »óÅÂµé Á¤ÀÇ (¾ðÁ¦µç Ãß°¡ °¡´É)
+// 1. ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½Âµï¿½ ï¿½ï¿½ï¿½ï¿½ (ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ß°ï¿½ ï¿½ï¿½ï¿½ï¿½)
 UENUM(BlueprintType)
 enum class ECharacterState : uint8
 {
@@ -19,10 +19,11 @@ enum class ECharacterState : uint8
 	Reloading,
 	Dashing,
 	Dodge,
-	Attack 
+	Attack,
+	WeaponSwap
 };
 
-// 2. »óÅÂ°¡ º¯ÇÒ ¶§ ¾Ë¸²À» »Ñ·ÁÁÙ µ¨¸®°ÔÀÌÆ® ¼±¾ð
+// 2. ï¿½ï¿½ï¿½Â°ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ ï¿½Ë¸ï¿½ï¿½ï¿½ ï¿½Ñ·ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Æ® ï¿½ï¿½ï¿½ï¿½
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnStateChangedSignature, ECharacterState, PrevState, ECharacterState, NewState);
 
 UCLASS( ClassGroup=(Custom), meta=(BlueprintSpawnableComponent) )
@@ -34,15 +35,15 @@ public:
 	// Sets default values for this component's properties
 	UCharacterStateComponent();
 
-	// »óÅÂ º¯°æ ÇÔ¼ö (ºí·çÇÁ¸°Æ®¿¡¼­µµ È£Ãâ °¡´É)
+	// ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½Ô¼ï¿½ (ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Æ®ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ È£ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½)
 	UFUNCTION(BlueprintCallable, Category = "State")
 	void SetState(ECharacterState NewState);
 
-	// ÇöÀç »óÅÂ È®ÀÎ ÇÔ¼ö
+	// ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ È®ï¿½ï¿½ ï¿½Ô¼ï¿½
 	UFUNCTION(BlueprintPure, Category = "State")
 	ECharacterState GetState() const { return CurrentState; }
 
-	// »óÅÂ º¯°æ ÀÌº¥Æ® ¸Å´ÏÀú (ºí·çÇÁ¸°Æ® ÀÌº¥Æ® ±×·¡ÇÁ¿¡¼­ ¹ÙÀÎµù °¡´É)
+	// ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½Ìºï¿½Æ® ï¿½Å´ï¿½ï¿½ï¿½ (ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Æ® ï¿½Ìºï¿½Æ® ï¿½×·ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½Îµï¿½ ï¿½ï¿½ï¿½ï¿½)
 	UPROPERTY(BlueprintAssignable, Category = "State")
 	FOnStateChangedSignature OnStateChanged;
 

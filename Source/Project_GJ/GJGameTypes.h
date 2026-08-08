@@ -78,6 +78,17 @@ struct FWeaponStat : public FTableRowBase
     // 재장전 몽타주 (아직 없다면 비워두면 됨 - 비어있으면 ReloadTime 타이머로 대체됨)
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Asset")
     UAnimMontage* ReloadMontageAsset;
+
+    // 인벤토리 무기 페이지 등 UI에 표시할 2D 아이콘
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Asset")
+    UTexture2D* WeaponIcon = nullptr;
+
+    // 이 무기로 교체(스왑)할 때 재생할 몽타주. 비어있으면 몽타주 없이 즉시 교체됨.
+    // 전용 스왑 애님이 아직 없으면 임시로 아무 몽타주나 넣어서 써도 됨 - 무기마다 다른 스왑 모션을
+    // 주고 싶으면 각 행에 별도 에셋을, 원거리/근접처럼 묶어서 공유하고 싶으면 같은 에셋을 여러 행에
+    // 지정하면 됨(코드에서 무기 종류를 구분하지 않고 데이터로만 제어)
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Asset")
+    UAnimMontage* SwapMontageAsset = nullptr;
 };
 
 // -----------------------------------------

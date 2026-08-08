@@ -43,6 +43,9 @@ AGJCharacter::AGJCharacter()
 
     InventoryComponent = CreateDefaultSubobject<UGJInventoryComponent>(TEXT("InventoryComponent"));
 
+    // 무기 슬롯 2칸(0번/1번) - 처음엔 둘 다 빈 슬롯
+    WeaponSlots.Init(nullptr, 2);
+
     CurrentLevel = 1;
 
     // [신규] 콤보 변수 초기화
@@ -165,12 +168,16 @@ void AGJCharacter::ToggleInventory()
         bIsAutoFiring = false;
 
         // 위젯에 키보드 포커스를 줌 - Tab을 "닫기"로 처리하는 건 이제 이 위젯의
-        // NativeOnKeyDown(GJInventoryWidget.cpp)이 직접 담당함(포커스가 있어야 키 이벤트가 위젯으로 들어옴).
+        // NativeOnPreviewKeyDown(GJInventoryWidget.cpp)이 직접 담당함(포커스가 있어야 키 이벤트가 위젯으로 들어옴).
         // 일시정지 중에는 캐릭터가 물고 있는 Enhanced Input 액션 평가가 안정적으로 안 들어올 수 있어서,
         // 게임 로직과 무관한 UI 레이어(Slate 키 이벤트)에서 직접 처리하는 쪽이 더 확실함.
-        FInputModeGameAndUI InputMode;
+        //
+        // GameAndUI 모드는 UI 패널 바깥(인벤토리 밖) 클릭이 게임 뷰포트로 그대로 흘러가는데, 그
+        // 클릭이 키보드 포커스를 뷰포트 쪽으로 가져가버려서 그 다음부턴 Tab이 이 위젯까지 아예
+        // 안 왔음(어차피 열려있는 동안은 게임이 일시정지 상태라 뒤쪽 게임 클릭이 의미도 없음).
+        // UIOnly로 완전히 UI에만 입력을 묶어서 포커스가 위젯 밖으로 새지 않게 함.
+        FInputModeUIOnly InputMode;
         InputMode.SetWidgetToFocus(InventoryWidgetInstance->TakeWidget());
-        InputMode.SetHideCursorDuringCapture(false);
         PC->SetInputMode(InputMode);
     }
 }
@@ -333,6 +340,16 @@ void AGJCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCompone
         if (InventoryToggleAction)
         {
             EnhancedInput->BindAction(InventoryToggleAction, ETriggerEvent::Started, this, &AGJCharacter::ToggleInventory);
+        }
+
+        // [신규] 무기 슬롯 스왑 입력 바인딩 (1번/2번 키)
+        if (WeaponSlot1Action)
+        {
+            EnhancedInput->BindAction(WeaponSlot1Action, ETriggerEvent::Started, this, &AGJCharacter::SwapToWeaponSlot1);
+        }
+        if (WeaponSlot2Action)
+        {
+            EnhancedInput->BindAction(WeaponSlot2Action, ETriggerEvent::Started, this, &AGJCharacter::SwapToWeaponSlot2);
         }
     }
 }
@@ -707,30 +724,46 @@ void AGJCharacter::PerformDodge()
 
 void AGJCharacter::OnMontageEndedEvent(UAnimMontage* Montage, bool bInterrupted)
 {
-    if (StateComponent)
+    if (!StateComponent)
     {
-        // 1. 회피 몽타주가 끝났을 때
-        if (Montage == DodgeForwardMontage || Montage == DodgeBackwardMontage ||
-            Montage == DodgeLeftMontage || Montage == DodgeRightMontage)
-        {
-            // 닷지 동안 무시해뒀던 Pawn 충돌을 원래대로 복구 (몽타주가 끊겼을 때도 반드시 복구되어야 함)
-            GetCapsuleComponent()->SetCollisionResponseToChannel(ECC_Pawn, ECR_Block);
+        return;
+    }
 
-            if (StateComponent->GetState() == ECharacterState::Dodge)
-            {
-                StateComponent->SetState(ECharacterState::Idle);
-            }
-        }
-        // 2. 무기 공격 몽타주가 끝났을 때 (또는 끊겼을 때)
-        else if (EquippedWeapon && Montage == EquippedWeapon->GetAttackMontage())
+    // 예전엔 몽타주 "에셋 자체"로만 무슨 몽타주가 끝났는지 구분했는데, 스왑 몽타주 자리에 임시로
+    // 기존 몽타주(예: 닷지 몽타주)를 재사용하면 그 에셋 하나가 여러 상태에서 동시에 쓰이게 되어
+    // 엉뚱한 분기로 빠지는 문제가 있었음(예: 스왑 중에 끝났는데 닷지 분기로 처리되면서
+    // "GetState() == Dodge" 검사에 걸려 WeaponSwap 상태가 영원히 안 풀림). 지금은 "그때 실제로
+    // 어떤 상태였는지"를 먼저 보고 분기해서, 몽타주 에셋이 겹쳐도 안전하게 동작함.
+    switch (StateComponent->GetState())
+    {
+    case ECharacterState::Dodge:
+        // 닷지 동안 무시해뒀던 Pawn 충돌을 원래대로 복구 (몽타주가 끊겼을 때도 반드시 복구되어야 함)
+        GetCapsuleComponent()->SetCollisionResponseToChannel(ECC_Pawn, ECR_Block);
+        StateComponent->SetState(ECharacterState::Idle);
+        break;
+
+    case ECharacterState::WeaponSwap:
+        // 실제 무기 교체는 SwapToWeaponSlot에서 이미 즉시 처리했으므로, 여기서는 입력을 막고
+        // 있던 WeaponSwap 상태만 풀어줌
+        StateComponent->SetState(ECharacterState::Idle);
+        break;
+
+    case ECharacterState::Attack:
+        if (EquippedWeapon && Montage == EquippedWeapon->GetAttackMontage())
         {
             ResetCombo();
         }
-        // 3. 재장전 몽타주가 끝났을 때 (또는 끊겼을 때)
-        else if (EquippedWeapon && Montage == EquippedWeapon->GetReloadMontage())
+        break;
+
+    case ECharacterState::Reloading:
+        if (EquippedWeapon && Montage == EquippedWeapon->GetReloadMontage())
         {
             CompleteReload();
         }
+        break;
+
+    default:
+        break;
     }
 }
 
@@ -788,11 +821,208 @@ void AGJCharacter::EquipWeapon()
         SpawnParams.Owner = this;
         SpawnParams.Instigator = this;
 
-        EquippedWeapon = GetWorld()->SpawnActor<AGJWeaponBase>(DefaultWeaponClass, GetActorLocation(), GetActorRotation(), SpawnParams);
+        AGJWeaponBase* StartingWeapon = GetWorld()->SpawnActor<AGJWeaponBase>(DefaultWeaponClass, GetActorLocation(), GetActorRotation(), SpawnParams);
 
-        if (EquippedWeapon)
+        if (StartingWeapon)
         {
-            EquippedWeapon->AttachToComponent(GetMesh(), FAttachmentTransformRules::SnapToTargetNotIncludingScale, FName(TEXT("WeaponSocket")));
+            // 시작 무기는 필드에 놓인 픽업이 아니므로 처음부터 상호작용 판정을 꺼둠
+            StartingWeapon->OnPickedUp(this);
+            WeaponSlots[0] = StartingWeapon;
+            CommitWeaponSwap(0);
         }
     }
+}
+
+AGJWeaponBase* AGJCharacter::GetWeaponInSlot(int32 SlotIndex) const
+{
+    return WeaponSlots.IsValidIndex(SlotIndex) ? WeaponSlots[SlotIndex] : nullptr;
+}
+
+void AGJCharacter::CommitWeaponSwap(int32 SlotIndex)
+{
+    if (!WeaponSlots.IsValidIndex(SlotIndex) || !WeaponSlots[SlotIndex])
+    {
+        return;
+    }
+
+    if (EquippedWeapon && EquippedWeapon != WeaponSlots[SlotIndex])
+    {
+        // 비활성화되는 무기는 버려지는 게 아니라 그냥 손에서 치워짐(숨김) - 슬롯엔 계속 남아있음
+        EquippedWeapon->SetActorHiddenInGame(true);
+
+        // 탄약 UI가 더 이상 이 무기의 발사/재장전에 반응하지 않도록 구독 해제
+        if (AGJWeapon_Ranged* OldRanged = Cast<AGJWeapon_Ranged>(EquippedWeapon))
+        {
+            OldRanged->OnAmmoChanged.RemoveDynamic(this, &AGJCharacter::HandleActiveWeaponAmmoChanged);
+        }
+    }
+
+    CurrentWeaponSlotIndex = SlotIndex;
+    EquippedWeapon = WeaponSlots[SlotIndex];
+
+    EquippedWeapon->AttachToComponent(GetMesh(), FAttachmentTransformRules::SnapToTargetNotIncludingScale, FName(TEXT("WeaponSocket")));
+    EquippedWeapon->SetActorHiddenInGame(false);
+
+    // 새로 손에 든 무기가 원거리 무기라면 탄약 UI가 이 무기의 발사/재장전을 구독하게 하고,
+    // 스왑 직후 다음 발사/재장전을 기다리지 않고 즉시 현재 탄약으로 한 번 갱신해줌
+    if (AGJWeapon_Ranged* NewRanged = Cast<AGJWeapon_Ranged>(EquippedWeapon))
+    {
+        NewRanged->OnAmmoChanged.AddUniqueDynamic(this, &AGJCharacter::HandleActiveWeaponAmmoChanged);
+        OnActiveWeaponAmmoChanged.Broadcast(NewRanged->GetCurrentAmmo(), NewRanged->GetWeaponStat().MagazineSize);
+    }
+    else
+    {
+        // 근접 무기 등 원거리 무기가 아니면 탄약 UI를 0/0으로 알려서 이전 무기의 탄약이 남아
+        // 표시되지 않게 함
+        OnActiveWeaponAmmoChanged.Broadcast(0, 0);
+    }
+}
+
+void AGJCharacter::HandleActiveWeaponAmmoChanged(int32 CurrentAmmo, int32 MaxAmmo)
+{
+    OnActiveWeaponAmmoChanged.Broadcast(CurrentAmmo, MaxAmmo);
+}
+
+void AGJCharacter::DropWeapon(int32 SlotIndex)
+{
+    if (!WeaponSlots.IsValidIndex(SlotIndex))
+    {
+        return;
+    }
+
+    if (AGJWeaponBase* Weapon = WeaponSlots[SlotIndex])
+    {
+        WeaponSlots[SlotIndex] = nullptr;
+
+        // 지금 손에 든 무기를 떨어뜨리는 거라면, CommitWeaponSwap이 "이전 무기"로 착각해서
+        // 방금 필드에 되돌려놓은 무기를 다시 숨겨버리지 않도록 먼저 참조를 끊어둠
+        if (EquippedWeapon == Weapon)
+        {
+            EquippedWeapon = nullptr;
+        }
+
+        Weapon->OnDropped(GetActorLocation() + GetActorForwardVector() * 100.f);
+    }
+}
+
+bool AGJCharacter::PickUpWeapon(AGJWeaponBase* NewWeapon)
+{
+    if (!NewWeapon)
+    {
+        return false;
+    }
+
+    int32 TargetSlot = INDEX_NONE;
+    bool bReplacedActiveSlot = false;
+    if (!WeaponSlots[0])
+    {
+        TargetSlot = 0;
+    }
+    else if (!WeaponSlots[1])
+    {
+        TargetSlot = 1;
+    }
+    else
+    {
+        // 두 슬롯이 다 찼으면 현재 활성 슬롯의 무기를 필드에 떨어뜨리고 그 자리를 새 무기로 채움
+        DropWeapon(CurrentWeaponSlotIndex);
+        TargetSlot = CurrentWeaponSlotIndex;
+        bReplacedActiveSlot = true;
+    }
+
+    NewWeapon->OnPickedUp(this);
+    WeaponSlots[TargetSlot] = NewWeapon;
+
+    // 방금 든 무기 자리를 대체했거나(안 그러면 손에 아무것도 안 들려있게 됨), 애초에 아무 무기도
+    // 없었을 때만 자동으로 손에 장착함. 그 외(빈 슬롯에 새로 채워진 경우)엔 자동 장착하지 않고
+    // 그냥 슬롯에만 채워둠 - 1/2번 키나 무기 페이지 클릭으로 직접 바꿔 껴야 함
+    if (bReplacedActiveSlot || !EquippedWeapon)
+    {
+        CommitWeaponSwap(TargetSlot);
+    }
+    else
+    {
+        NewWeapon->SetActorHiddenInGame(true);
+    }
+
+    OnWeaponSlotsChanged.Broadcast();
+    return true;
+}
+
+void AGJCharacter::SwapToWeaponSlot(int32 SlotIndex)
+{
+    if (!WeaponSlots.IsValidIndex(SlotIndex) || !WeaponSlots[SlotIndex])
+    {
+        return; // 빈 슬롯으로는 전환할 수 없음
+    }
+
+    if (SlotIndex == CurrentWeaponSlotIndex)
+    {
+        return; // 이미 사용 중인 무기
+    }
+
+    if (!StateComponent)
+    {
+        return;
+    }
+
+    const ECharacterState CurState = StateComponent->GetState();
+    if (CurState == ECharacterState::Dead || CurState == ECharacterState::Attack ||
+        CurState == ECharacterState::Reloading || CurState == ECharacterState::Dodge ||
+        CurState == ECharacterState::WeaponSwap)
+    {
+        return;
+    }
+
+    UAnimMontage* SwapMontage = WeaponSlots[SlotIndex]->GetSwapMontage();
+
+    CommitWeaponSwap(SlotIndex);
+    OnWeaponSlotsChanged.Broadcast();
+
+    if (SwapMontage)
+    {
+        // PlayAnimMontage는 몽타주가 캐릭터 스켈레톤과 안 맞는 등 실제로 재생을 못 시키면 0을
+        // 반환함 - 이때 그냥 WeaponSwap 상태로 잠가버리면 몽타주가 끝났다는 콜백이 영원히 안 와서
+        // 캐릭터가 그 상태에 계속 갇혀버림(공격/닷지/스왑이 전부 막힘). 실제로 재생에 성공했을
+        // 때만 상태를 잠그고, 실패하면 (몽타주가 없을 때처럼) 그냥 즉시 교체로 취급함.
+        const float PlayLength = PlayAnimMontage(SwapMontage);
+        if (PlayLength > 0.f)
+        {
+            StateComponent->SetState(ECharacterState::WeaponSwap);
+        }
+    }
+}
+
+bool AGJCharacter::SwapWeaponSlots(int32 IndexA, int32 IndexB)
+{
+    if (!WeaponSlots.IsValidIndex(IndexA) || !WeaponSlots.IsValidIndex(IndexB) || IndexA == IndexB)
+    {
+        return false;
+    }
+
+    WeaponSlots.Swap(IndexA, IndexB);
+
+    // 배열상의 자리만 바뀌었을 뿐 실제로 손에 들고 있는 무기(EquippedWeapon)는 그대로이므로,
+    // 활성 슬롯 번호도 그 무기를 따라 옮겨줘야 함(안 그러면 활성 슬롯 표시가 엉뚱한 칸에 남음)
+    if (EquippedWeapon == WeaponSlots[IndexA])
+    {
+        CurrentWeaponSlotIndex = IndexA;
+    }
+    else if (EquippedWeapon == WeaponSlots[IndexB])
+    {
+        CurrentWeaponSlotIndex = IndexB;
+    }
+
+    OnWeaponSlotsChanged.Broadcast();
+    return true;
+}
+
+void AGJCharacter::SwapToWeaponSlot1()
+{
+    SwapToWeaponSlot(0);
+}
+
+void AGJCharacter::SwapToWeaponSlot2()
+{
+    SwapToWeaponSlot(1);
 }

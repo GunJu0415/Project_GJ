@@ -63,6 +63,12 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Inventory")
     bool SwapSlots(int32 IndexA, int32 IndexB);
 
+    // 슬롯의 아이템을 사용함 (인벤토리 UI에서 더블클릭 시 호출). EItemType::Consumable인
+    // 아이템만 사용 가능하고(장비/재료/퀘스트 아이템은 더블클릭해도 아무 일도 안 일어남),
+    // 실제 회복 효과 적용은 소유 액터(AGJCharacter)에게 위임한 뒤 수량을 1 줄임.
+    UFUNCTION(BlueprintCallable, Category = "Inventory")
+    bool UseItem(int32 SlotIndex);
+
 protected:
     virtual void BeginPlay() override;
 

@@ -56,6 +56,20 @@ FReply UGJInventorySlotWidget::NativeOnMouseButtonDown(const FGeometry& InGeomet
     return FReply::Unhandled();
 }
 
+FReply UGJInventorySlotWidget::NativeOnMouseButtonDoubleClick(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent)
+{
+    if (InMouseEvent.GetEffectingButton() == EKeys::LeftMouseButton && OwningInventory)
+    {
+        // 소비형 아이템이 아니면 UseItem 내부에서 아무 일도 안 일어나고 false만 반환됨
+        if (OwningInventory->UseItem(SlotIndex))
+        {
+            return FReply::Handled();
+        }
+    }
+
+    return FReply::Unhandled();
+}
+
 void UGJInventorySlotWidget::NativeOnDragDetected(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent, UDragDropOperation*& OutOperation)
 {
     UGJInventorySlotDragOp* DragOp = NewObject<UGJInventorySlotDragOp>(this);

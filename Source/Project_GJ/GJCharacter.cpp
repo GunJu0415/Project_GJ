@@ -54,7 +54,6 @@ void AGJCharacter::BeginPlay()
 {
     Super::BeginPlay();
     LastValidRotation = GetActorRotation();
-    DefaultMaxStepHeight = GetCharacterMovement()->MaxStepHeight;
 
     if (APlayerController* PC = Cast<APlayerController>(GetController()))
     {
@@ -299,6 +298,9 @@ void AGJCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCompone
         if (MoveAction)
         {
             EnhancedInput->BindAction(MoveAction, ETriggerEvent::Triggered, this, &AGJCharacter::Move);
+            // 방향 키를 뗐을 때 MoveInput을 0으로 되돌림 (안 그러면 마지막 방향이 계속 남아있음)
+            EnhancedInput->BindAction(MoveAction, ETriggerEvent::Completed, this, &AGJCharacter::MoveInputReleased);
+            EnhancedInput->BindAction(MoveAction, ETriggerEvent::Canceled, this, &AGJCharacter::MoveInputReleased);
         }
 
         if (DodgeAction)
@@ -346,6 +348,11 @@ void AGJCharacter::Move(const FInputActionValue& Value)
 
     AddMovementInput(FVector::ForwardVector, Movement.Y);
     AddMovementInput(FVector::RightVector, Movement.X);
+}
+
+void AGJCharacter::MoveInputReleased()
+{
+    MoveInput = FVector2D::ZeroVector;
 }
 
 // ==========================================
@@ -573,11 +580,75 @@ void AGJCharacter::InteractInputPressed()
 // ==========================================
 void AGJCharacter::PerformDodge()
 {
-    if (MoveInput.IsNearlyZero()) return;
     if (!StateComponent || StateComponent->GetState() != ECharacterState::Idle) return;
 
-    FVector WorldDirection(MoveInput.Y, MoveInput.X, 0.f);
-    WorldDirection.Normalize();
+    FVector WorldDirection;
+    if (MoveInput.IsNearlyZero())
+    {
+        // 이동 방향 입력이 없으면 캐릭터가 지금 바라보고 있는 방향으로 닷지함
+        WorldDirection = GetActorForwardVector();
+    }
+    else
+    {
+        WorldDirection = FVector(MoveInput.Y, MoveInput.X, 0.f);
+        WorldDirection.Normalize();
+    }
+
+    const float DodgeDistance = 500.f;
+
+    // 경로 중간에 턱/오르막처럼 높이가 있는 지형이 있으면 모션 워핑과 무브먼트 컴포넌트가
+    // 서로 다투며 캐릭터가 튕겨나가는 문제가 있었음 - 닷지 시작 전에 캡슐을 목적지까지 그대로
+    // (높이 변화 없이) 스윕해서, 막혀있으면 걸린 지점 바로 앞까지만 워프 거리를 줄임.
+    // (예전엔 아예 닷지 자체를 취소했는데, 그러면 벽을 등지고 있을 때 아예 회피가 안 나가버려서
+    // - 이동은 못 해도 최소한 그 방향 회피 동작/무적 프레임은 나가도록 "취소" 대신 "거리 축소"로 변경)
+    float ActualDodgeDistance = DodgeDistance;
+    {
+        // 캡슐을 캐릭터 발밑 높이 그대로 스윕하면 CMC가 원래 알아서 잘 밟고 올라가는 작은 단차/
+        // 완만한 오르막까지도 전부 "막힘"으로 잡혀서 닷지가 씹혔음. 실제로 튀는 버그는 CMC가
+        // 자동으로 못 올라가는(MaxStepHeight보다 높은) 진짜 턱/벽에서만 났으므로, 스윕 시작 높이를
+        // "밟고 올라갈 수 있는 높이" 만큼 들어올려서 그 이하 높이의 지형은 애초에 안 걸리게 함
+        const UCharacterMovementComponent* MoveComp = GetCharacterMovement();
+        const float StepUpTolerance = (MoveComp ? MoveComp->MaxStepHeight : 45.f) * 0.9f;
+
+        const FVector SweepStart = GetActorLocation() + FVector(0.f, 0.f, StepUpTolerance);
+        const FVector SweepEnd = SweepStart + WorldDirection * DodgeDistance;
+
+        FCollisionShape CapsuleShape = FCollisionShape::MakeCapsule(
+            GetCapsuleComponent()->GetScaledCapsuleRadius(),
+            GetCapsuleComponent()->GetScaledCapsuleHalfHeight());
+
+        FCollisionQueryParams SweepParams;
+        SweepParams.AddIgnoredActor(this);
+
+        // ECC_Pawn 채널로 스윕하면 근처에 있는 다른 폰(적)이나 날아가는 총알(WorldDynamic)까지
+        // "막힘"으로 잡혀서 닷지가 애먼 타이밍에 씹혔음 - 오브젝트 타입이 WorldStatic(정적 지형)인
+        // 것만 걸리도록 해서 환경(벽/턱)에만 반응하게 함
+        FCollisionObjectQueryParams ObjectParams;
+        ObjectParams.AddObjectTypesToQuery(ECC_WorldStatic);
+
+        FHitResult SweepHit;
+        const bool bSweepHit = GetWorld()->SweepSingleByObjectType(SweepHit, SweepStart, SweepEnd, FQuat::Identity, ObjectParams, CapsuleShape, SweepParams);
+
+        // bStartPenetrating이 true인 히트는 "스윕 시작 지점에서 이미 겹쳐있던 것" - 캐릭터 캡슐은
+        // 원래 서 있는 바닥과 항상 거의 맞닿아 있어서, 이걸 걸러내지 않으면 평지에서도 매번
+        // 바닥 자체가 "막힘"으로 잡혀 닷지가 거의 항상 씹히는 문제가 있었음
+        if (bSweepHit && !SweepHit.bStartPenetrating)
+        {
+            // 걸린 표면이 "걸어서 오를 수 있는 경사"(오르막)인지 판단 - 오르막은 CMC가 원래
+            // 스텝업 없이도 그냥 걸어 올라가는 지형이라 튕김 버그와 무관함. 부딪힌 지점의 법선이
+            // 거의 수직(=진짜 벽/못 오르는 턱)일 때만 거리를 줄이고, 걸을 수 있는 경사면이면
+            // 걸린 걸로 치지 않고 원래 거리 그대로 통과시킴
+            const float WalkableFloorAngle = MoveComp ? MoveComp->GetWalkableFloorAngle() : 44.7f;
+            const float HitSurfaceAngle = FMath::RadiansToDegrees(FMath::Acos(FMath::Clamp(SweepHit.Normal.Z, -1.f, 1.f)));
+
+            if (HitSurfaceAngle > WalkableFloorAngle)
+            {
+                // 걸린 지점보다 살짝 안쪽까지만 - 모션 워핑 목표 지점이 막힌 지형 너머(도달 불가능한
+                // 곳)로 잡히지 않게 해서, 튕겨나가는 원인 자체를 없앰
+                ActualDodgeDistance = FMath::Max(SweepHit.Distance - 10.f, 0.f);
+            }
+        }
+    }
 
     FVector Local = GetActorTransform().InverseTransformVectorNoScale(WorldDirection);
     Local.Normalize();
@@ -587,7 +658,6 @@ void AGJCharacter::PerformDodge()
 
     UAnimMontage* Montage = nullptr;
     FVector FacingDirection = WorldDirection;
-    float DodgeDistance = 500.f;
 
     if (Angle >= -22.5f && Angle < 22.5f) { Montage = DodgeForwardMontage; }
     else if (Angle >= 22.5f && Angle < 67.5f) { Montage = DodgeForwardMontage; }
@@ -604,7 +674,7 @@ void AGJCharacter::PerformDodge()
 
     if (MotionWarpingComponent)
     {
-        FVector WarpLocation = GetActorLocation() + WorldDirection * DodgeDistance;
+        FVector WarpLocation = GetActorLocation() + WorldDirection * ActualDodgeDistance;
 
         // 목적지에 오르막/턱이 있으면 시작 지점 높이를 그대로 워프 타깃 Z로 쓰는 게 실제 바닥과 어긋나서,
         // 무브먼트 컴포넌트의 바닥/계단 보정과 모션 워핑이 서로 다른 높이로 캐릭터를 끌어당기며
@@ -625,9 +695,11 @@ void AGJCharacter::PerformDodge()
         MotionWarpingComponent->AddOrUpdateWarpTargetFromLocation(FName("DodgeTarget"), WarpLocation);
     }
 
-    // 닷지 도중에는 낮은 턱/오르막에 걸려 모션 워핑과 충돌 보정이 다투지 않도록 한계 스텝 높이를 잠깐 늘림
-    // (닷지가 끝나면 OnMontageEndedEvent에서 DefaultMaxStepHeight로 복원함)
-    GetCharacterMovement()->MaxStepHeight = DefaultMaxStepHeight + DodgeExtraStepHeight;
+    // 구르는 도중에 다른 폰(적)과 부딪히면, 모션 워핑이 계속 목표 지점으로 끌어당기는 것과
+    // 무브먼트 컴포넌트의 충돌 보정(밀어내기)이 서로 다투면서 지형 턱에서와 같은 튕김 현상이 났음 -
+    // 사전 스윕은 시작 시점 기준이라 구르는 도중 움직이는 적까지는 못 막으므로, 닷지 중엔 아예
+    // Pawn 채널 충돌을 무시하게 해서 부딪히지 않고 지나치게 함 (닷지 무적 프레임과도 자연스럽게 맞음)
+    GetCapsuleComponent()->SetCollisionResponseToChannel(ECC_Pawn, ECR_Ignore);
 
     StateComponent->SetState(ECharacterState::Dodge);
     PlayAnimMontage(Montage);
@@ -641,8 +713,8 @@ void AGJCharacter::OnMontageEndedEvent(UAnimMontage* Montage, bool bInterrupted)
         if (Montage == DodgeForwardMontage || Montage == DodgeBackwardMontage ||
             Montage == DodgeLeftMontage || Montage == DodgeRightMontage)
         {
-            // 닷지 중에만 늘려뒀던 한계 스텝 높이를 원래대로 복원 (끊겼을 때도 반드시 복원되도록 상태 체크 밖에서 처리)
-            GetCharacterMovement()->MaxStepHeight = DefaultMaxStepHeight;
+            // 닷지 동안 무시해뒀던 Pawn 충돌을 원래대로 복구 (몽타주가 끊겼을 때도 반드시 복구되어야 함)
+            GetCapsuleComponent()->SetCollisionResponseToChannel(ECC_Pawn, ECR_Block);
 
             if (StateComponent->GetState() == ECharacterState::Dodge)
             {
@@ -682,6 +754,13 @@ void AGJCharacter::UpdateCharacterStat(int32 NewLevel)
         }
     }
 
+    UpdatePlayerHUD();
+}
+
+void AGJCharacter::ApplyConsumableEffect(float HealAmount, float ManaAmount)
+{
+    CurrentHP = FMath::Clamp(CurrentHP + HealAmount, 0.f, MaxHP);
+    CurrentMP = FMath::Clamp(CurrentMP + ManaAmount, 0.f, MaxMP);
     UpdatePlayerHUD();
 }
 

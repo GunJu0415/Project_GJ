@@ -58,6 +58,10 @@ protected:
 
     void Move(const FInputActionValue& Value);
 
+    // 이동 입력이 없어질 때(키를 뗄 때) MoveInput을 0으로 되돌림 - 안 그러면 마지막으로 눌렀던
+    // 방향이 계속 남아있어서, 방향 입력 없이 닷지할 때 엉뚱하게 그 방향으로 닷지되는 문제가 있었음
+    void MoveInputReleased();
+
 protected:
     EDodgeType DodgeType;
 
@@ -138,15 +142,6 @@ protected:
     UPROPERTY(EditDefaultsOnly, Category = "Animation")
     UAnimMontage* DodgeBackwardMontage;
 
-    // 닷지 도중에는 모션 워핑이 루트모션으로 캐릭터를 계속 밀어붙이는데, 낮은 턱/오르막이
-    // CharacterMovement의 기본 MaxStepHeight보다 살짝 높으면 CMC가 그걸 벽처럼 막힌 것으로 처리해서
-    // 서로 다투다가 튕겨나가는 문제가 생김. 닷지 중에만 한계 스텝 높이를 이만큼 더 올려서 완화함.
-    UPROPERTY(EditAnywhere, Category = "Animation")
-    float DodgeExtraStepHeight = 40.f;
-
-    // BeginPlay에서 캐싱해두는 원래 MaxStepHeight (닷지 끝나면 이 값으로 복원)
-    float DefaultMaxStepHeight = 0.f;
-
     void PerformDodge();
 
     // [수정] 범용 몽타주 종료 처리 함수로 이름 변경
@@ -217,6 +212,13 @@ protected:
 
     UFUNCTION(BlueprintCallable, Category = "Character Stat")
     void UpdateCharacterStat(int32 NewLevel);
+
+public:
+    // 소비 아이템 사용 시 HP/MP 회복 적용 (인벤토리 컴포넌트의 UseItem에서 호출됨)
+    UFUNCTION(BlueprintCallable, Category = "Item")
+    void ApplyConsumableEffect(float HealAmount, float ManaAmount);
+
+protected:
 
     UPROPERTY(EditDefaultsOnly, Category = "Weapon")
     TSubclassOf<AGJWeaponBase> DefaultWeaponClass;

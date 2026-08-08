@@ -1,5 +1,6 @@
 #include "GJInventoryComponent.h"
 #include "GJGameTypes.h"
+#include "GJCharacter.h"
 
 UGJInventoryComponent::UGJInventoryComponent()
 {
@@ -133,6 +134,42 @@ bool UGJInventoryComponent::SwapSlots(int32 IndexA, int32 IndexB)
     }
 
     Items.Swap(IndexA, IndexB);
+    OnInventoryChanged.Broadcast();
+    return true;
+}
+
+bool UGJInventoryComponent::UseItem(int32 SlotIndex)
+{
+    if (!Items.IsValidIndex(SlotIndex))
+    {
+        return false;
+    }
+
+    FInventorySlot& Slot = Items[SlotIndex];
+    if (Slot.ItemHandle.IsNull() || Slot.Quantity <= 0)
+    {
+        return false;
+    }
+
+    FItemData* ItemData = Slot.ItemHandle.GetRow<FItemData>(TEXT("UseItem"));
+    if (!ItemData || ItemData->ItemType != EItemType::Consumable)
+    {
+        return false; // 소비형 아이템이 아니면 더블클릭으로 사용할 수 없음
+    }
+
+    if (AGJCharacter* OwningCharacter = Cast<AGJCharacter>(GetOwner()))
+    {
+        OwningCharacter->ApplyConsumableEffect(ItemData->HealAmount, ItemData->ManaRecoverAmount);
+    }
+
+    Slot.Quantity--;
+    if (Slot.Quantity <= 0)
+    {
+        // 칸 자체를 배열에서 지우지 않고 빈 칸으로만 되돌림 (그리드 위치가 밀리지 않도록)
+        Slot.ItemHandle = FDataTableRowHandle();
+        Slot.Quantity = 0;
+    }
+
     OnInventoryChanged.Broadcast();
     return true;
 }

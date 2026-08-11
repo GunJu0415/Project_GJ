@@ -100,11 +100,20 @@ UCLASS(config=Game)
 | `CombatLevelName` (`FName`, `Config`) | 전투 레벨 이름 |
 | `EndRunAndReturnToHub()` | `RebirthCount++` 후 허브 레벨 열기 |
 | `StartNewRun()` | 전투 레벨 열기 (카운트는 증가시키지 않음) |
-| `IsHubLevel()` | 현재 열린 레벨이 허브인지 판정 (`HubLevelName`과 비교) |
 
-**`RebirthCount`의 의미**: **종료된 런의 횟수**다. 게임을 처음 켰을 때 0이고, 첫 사망 후 1이 된다. 따라서 지금 진행 중인 런의 회차는 `RebirthCount + 1`이다. 증가 시점은 런이 **끝날 때**(`EndRunAndReturnToHub`) 한 곳뿐이며, `StartNewRun()`은 카운트를 건드리지 않는다. 이렇게 해야 "사망 → 자동 허브 이동"(위젯 미할당 시 폴백)에서도 카운트가 정확히 한 번만 오른다.
+### `RebirthCount`의 의미 — 누적 도전 횟수
 
-`UGJGameOverWidget::RunCountText`는 방금 끝난 런의 회차, 즉 증가 후의 `RebirthCount` 값을 표시한다.
+`RebirthCount`는 **플레이어가 지금까지 로그라이크에 도전한 총 횟수**이며, 세이브에 저장되어 계속 쌓이는 값이다. 특정 세션에 한정된 값이 아니다.
+
+- 완전히 새로 시작한 플레이어(신규 세이브)일 때만 0이다.
+- 게임을 껐다 켜면 **이전 숫자가 그대로 이어진다.**
+- 따라서 플레이 지표(통계)로도 그대로 활용할 수 있다 — "N번째 도전".
+
+증가 시점은 런이 **끝날 때**(`EndRunAndReturnToHub`) 한 곳뿐이며, `StartNewRun()`은 카운트를 건드리지 않는다. 이렇게 해야 "사망 → 자동 허브 이동"(위젯 미할당 시 폴백) 경로에서도 정확히 한 번만 오른다.
+
+`UGJGameOverWidget::RunCountText`는 방금 끝난 도전의 번호, 즉 증가 후의 `RebirthCount` 값을 표시한다.
+
+**M1에서의 한계**: 이 값을 저장·복원하는 세이브 시스템은 M4에서 만든다. M1 구현만으로는 앱을 종료하면 값이 0으로 돌아간다. 이는 **의도된 중간 상태**이며, `RebirthCount`가 영구 데이터라는 전제는 지금부터 유효하다 — M4의 저장 대상 1순위가 이 값이다.
 
 레벨 이름을 `Config` 프로퍼티로 두는 이유: `Config/DefaultGame.ini`에서 값을 지정할 수 있어 **블루프린트 서브클래스를 새로 만들 필요가 없다.** 현재 `DefaultEngine.ini`가 네이티브 클래스(`/Script/Project_GJ.GJGameInstance`)를 직접 가리키고 있으므로, BP 서브클래스를 만들면 그 설정도 함께 바꿔야 한다.
 
@@ -135,7 +144,6 @@ UCLASS(config=Game)
        (이동 정지, 캡슐·메시 콜리전 해제 — 이미 구현되어 있음)
   → AGJCharacter::HandleDeath() → GameMode->OnPlayerDied()
   → AGJGameMode::OnPlayerDied()
-       IsHubLevel()이면 즉시 반환
        bRunEnded 확인 후 DeathToGameOverDelay 타이머 시작
   → AGJGameMode::ShowGameOverScreen()
        위젯 생성 + AddToViewport + FInputModeUIOnly
@@ -167,7 +175,8 @@ UCLASS(config=Game)
 | `GameOverWidgetClass` 미할당 | 위젯 없이 딜레이 후 **자동으로 허브 이동** | 위젯 에셋을 아직 만들지 않아도 루프가 돌아간다 |
 | `OnPlayerDied()` 중복 호출 | `bRunEnded` 플래그로 1회만 처리 | 타이머 중복 등록 방지 |
 | GameMode 캐스팅 실패 | 로그만 남기고 무시 | 다른 GameMode를 쓰는 레벨에서 죽어도 크래시하지 않는다 |
-| 허브 레벨에서 사망 | `UGJGameInstance::IsHubLevel()`이 참이면 `OnPlayerDied()`가 즉시 반환 | 현재 허브에는 적이 없지만, 허브에서 죽어 다시 허브로 이동하며 회차만 오르는 상황을 막는다 |
+
+**허브에서는 사망이 발생하지 않는다.** 허브는 적도 위험 요소도 없는 안전 지대로 설계하므로, 허브에서 죽는 경로 자체가 존재하지 않는다. 이 경우를 위한 방어 코드는 두지 않는다.
 
 ---
 
@@ -178,7 +187,7 @@ UCLASS(config=Game)
 1. Live Coding 컴파일 통과 (Ctrl+Alt+F11)
 2. 전투 레벨에서 사망 → 약 2초 뒤 게임오버 위젯 표시 → 버튼 클릭 → 허브 레벨 로드
 3. 허브에서 포탈에 상호작용 → 전투 레벨 로드
-4. 2~3번을 **두 번 이상 반복** → 로그에서 `RebirthCount`가 1, 2로 증가하는지 확인
+4. 2~3번을 **두 번 이상 반복** → 로그에서 `RebirthCount`가 1, 2로 증가하는지 확인 (한 세션 안에서만 확인한다. 앱을 껐다 켜면 0으로 돌아가는 것이 M1에서는 정상이며, 이어지게 만드는 것은 M4의 일이다)
 5. 새 런 시작 시 HP/MP·인벤토리·무기가 **초기 상태로 돌아가 있는지** 확인
 
 5번은 "레벨 재로드로 자동 초기화된다"는 설계 가정을 실제로 검증하는 지점이므로 생략하지 않는다.
@@ -211,11 +220,13 @@ M1이 정의하는 "런 경계"는 이후 마일스톤 전체의 전제가 된�
 M1 런 루프 닫기  ← 이 문서
  ├─ M2 인런 성장 (EXP/레벨업)        — 언제 리셋되는지가 M1에서 결정됨
  ├─ M3 회차 인계 규칙                — 무엇이 남는지를 정의
- │    └─ M4 세이브/로드              — M3에서 정한 것을 앱 재시작에도 유지
+ │    └─ M4 세이브/로드              — RebirthCount와 M3의 인계 대상을 영구 저장
  │         └─ M6 메타 프로그레션
  └─ M5 스테이지 진행 (다중 레벨)      — 런에 구조 추가, 클리어 조건 도입
 
 M7 근접 무기 + 히트 판정  ← 독립적, 순서 무관
 ```
+
+**M4가 M1의 미완성 부분을 채운다.** `RebirthCount`는 설계상 누적 지표이지만 M1에서는 인메모리라 앱 종료 시 사라진다. M4에서 `USaveGame`에 저장·복원하면 비로소 "게임을 껐다 켜도 이어지는 도전 횟수"가 완성된다. M4의 저장 대상 1순위가 이 값이다.
 
 M5에서 런 클리어(승리) 조건이 추가되면 `EndRunAndReturnToHub()`가 종료 사유를 받도록 확장될 수 있다. M1에서는 사망 경로만 존재하므로 지금은 매개변수를 두지 않는다.

@@ -2,7 +2,7 @@
 
 > 대상: 처음 이 코드베이스를 리뷰하는 사람. "어디에 뭐가 있고, 뭘 하는 함수인지" 빠르게 파악하는 용도.
 > 기준: UE 5.8, C++ 우선 + 얇은 블루프린트 레이어. 탑다운 카메라 런앤건/핵앤슬래시. 솔로 개발.
-> 마지막 갱신 시점: 2026-08-08 세션 기준 (닷지 버그 수정, 무기 2슬롯 스왑/필드 픽업 시스템, 탄약 UI 델리게이트 재설계, 인벤토리 UI(그리드+무기 페이지) 구현까지 반영됨)
+> 마지막 갱신 시점: 2026-08-08 세션 기준 (M1 런 루프까지 반영됨 — 닷지 버그 수정, 무기 2슬롯 스왑/필드 픽업, 탄약 UI 델리게이트 재설계, 인벤토리 UI, 로그라이트 회차 루프)
 
 ---
 
@@ -18,7 +18,9 @@
 | `Content/GJ/` | **실제 콘텐츠** (블루프린트, 데이터 테이블, 애니메이션, UI 위젯) |
 | `Content/Variant_Strategy/`, `Variant_TwinStick/` | **안 씀.** 위와 동일한 템플릿 잔재 |
 
-⚠️ **인코딩 주의**: `Source/Project_GJ/*.cpp/.h`의 기존 한글 주석 중 일부는 **CP949(EUC-KR)**로 저장되어 있음 (초기 파일들, 예: `CharacterStateComponent.h`). UTF-8 기준 툴로 열면 깨져 보일 수 있는데 파일 자체는 CP949로는 정상. 이 문서는 UTF-8로 작성됨.
+⚠️ **인코딩 주의**: 초기 파일들(`CharacterStateComponent.h`, `GJGameInstance.*`, `GJGameMode.cpp` 등)의 한글 주석이 깨져 보인다. 2026-08-08에 실제 바이트를 확인한 결과, **이미 손실 변환이 일어난 상태**다 — 대부분 `EF BF BD`(U+FFFD 대체 문자)로 바뀌어 있어 **원래 한글은 복구 불가**이고, 일부 CP949 바이트 쌍만 살아남아 섞여 있다. 즉 "CP949로 열면 정상"이 아니라 그냥 깨진 것이다.
+
+실무상 영향: 파일은 사실상 UTF-8로 취급되고 컴파일에 문제가 없으므로, **새 주석은 UTF-8 한글로 그냥 쓰면 된다.** 다만 깨진 옛 주석 줄은 의미를 알 수 없으므로 함부로 지우지 말고, 해당 코드를 실제로 손볼 때 새로 다시 쓰는 편이 낫다. 이 문서는 UTF-8로 작성됨.
 
 ---
 
@@ -36,7 +38,9 @@ AGJItemBase (abstract, AActor, IGJInteractable 구현)
 └─ AGJItem              — 데이터 테이블 기반 범용 습득 아이템 (BP_Item_XXX로 파생시켜 사용)
 
 IGJInteractable (UInterface) — 상호작용 가능한 모든 것의 공통 인터페이스
-                                (소비 아이템, 필드에 놓인 무기, 나중에 문/버튼 등)
+                                (소비 아이템, 필드에 놓인 무기, 허브의 런 시작 포탈, 나중에 문/버튼 등)
+
+AGJRunPortal (AActor, IGJInteractable 구현) — 허브의 런 시작 포탈
 
 AGJProjectile (AActor)  — 오브젝트 풀링되는 총알
 
@@ -53,7 +57,8 @@ UI (UUserWidget)
 ├─ UGJPlayerHUDWidget     — 좌상단 플레이어 HP/MP 바 (뷰포트 HUD)
 ├─ UGJInventoryWidget     — 인벤토리 창 (아이템 그리드 페이지 + 무기 페이지, 탭 전환)
 ├─ UGJInventorySlotWidget — 인벤토리 그리드 한 칸 (드래그로 자리 교체, 더블클릭으로 소비 아이템 사용)
-└─ UGJWeaponSlotWidget    — 무기 페이지 한 칸 (클릭으로 장착 전환, 드래그로 1/2번 자리 교체)
+├─ UGJWeaponSlotWidget    — 무기 페이지 한 칸 (클릭으로 장착 전환, 드래그로 1/2번 자리 교체)
+└─ UGJGameOverWidget      — 런 종료 시 뜨는 게임오버 화면
 
 데이터 (GJGameTypes.h, USTRUCT : FTableRowBase)
 ├─ FCharacterStat  — DT_CharacterStat
@@ -319,6 +324,38 @@ BT 트리 구조 자체(Selector로 IsInAttackRange 분기해서 MoveTo vs Melee
 
 ---
 
+## 6.5 런 루프 (로그라이트 회차 구조)
+
+플레이어가 죽으면 런이 끝나고 허브로 돌아가며, 허브의 포탈로 새 런을 시작한다.
+
+| 클래스 | 책임 | 수명 |
+|---|---|---|
+| `UGJGameInstance` | `RebirthCount`(누적 도전 횟수), 레벨 전환 실행 | 앱 전체 (레벨 전환에도 생존) |
+| `AGJGameMode` | 사망 감지, 딜레이, 게임오버 화면, 입력 전환 | 레벨마다 새로 생성 |
+| `AGJRunPortal` | 허브에서 새 런 시작 (`IGJInteractable`) | 레벨 소속 |
+| `UGJGameOverWidget` | 게임오버 화면 (`ReturnToHubButton`, `RunCountText`) | 위젯 |
+
+```
+[전투 레벨] HP 0 → HandleDeath() → AGJGameMode::OnPlayerDied()
+  → EndRun() (RebirthCount++) + DeathToGameOverDelay(기본 2초) 타이머
+  → ShowGameOverScreen() → 위젯 표시 + FInputModeUIOnly
+  → "허브로 돌아가기" 클릭 → ReturnToHub() → OpenLevel(HubLevelName)
+
+[허브] 포탈에 상호작용(E) → StartNewRun() → OpenLevel(CombatLevelName)
+```
+
+**설계 규칙**
+
+- **레벨 경로는 `Config/DefaultGame.ini`**의 `[/Script/Project_GJ.GJGameInstance]` 섹션에서 지정한다. `Config` 프로퍼티라 블루프린트 서브클래스를 만들 필요가 없다(현재 `DefaultEngine.ini`가 네이티브 클래스를 직접 가리킴).
+- **회차 카운트는 사망 시점 한 곳(`OnPlayerDied`)에서만** 증가한다. 게임오버 위젯을 거치든, 위젯 미할당 폴백으로 바로 이동하든 중복되지 않는다. 그래서 위젯이 표시하는 값이 곧 "방금 끝난 도전의 번호"가 된다.
+- **인벤토리/무기를 명시적으로 초기화하지 않는다.** 레벨을 다시 여는 순간 캐릭터가 새로 스폰되어 자동 초기화된다(2회 반복 플레이로 검증됨).
+- **소프트락 방지**: 레벨 이름이 비어 있으면 `OpenLevel`을 호출하지 않고 에러 로그만 남긴다. `GameOverWidgetClass`가 비어 있으면 화면 없이 곧바로 허브로 보낸다.
+- `RebirthCount`는 설계상 세이브에 저장되어 누적되는 값이지만 **저장은 아직 미구현**이라 앱을 종료하면 0으로 돌아간다(M4에서 해결).
+
+> ⚠️ **`FInputModeUIOnly`는 레벨 전환 후에도 남는다.** `SetInputMode`는 월드보다 오래 사는 `UGameViewportClient`에 설정을 걸기 때문에, 게임오버 화면에서 UI 전용 모드로 바꾸면 `OpenLevel` 이후 새 레벨에서도 게임 입력이 통째로 무시된다(마우스만 움직이는 증상). 그래서 `AGJCharacter::BeginPlay()`에서 캐릭터가 스폰될 때마다 `FInputModeGameOnly`로 되돌린다.
+
+---
+
 ## 7. UI / 위젯
 
 체력바/HP·MP 바는 **C++ 베이스 클래스 + `BindWidget`** 패턴을 씀 (블루프린트 이벤트 그래프에 로직을 두지 않음 — UMG 이벤트 그래프 자동화 작업 중 문제가 있었던 이력이 있어서, 값 갱신 로직은 전부 C++ `UFUNCTION(BlueprintCallable)`로 두고 디자이너에서는 이름만 맞는 위젯을 배치하면 되게 함).
@@ -328,7 +365,7 @@ BT 트리 구조 자체(Selector로 IsInAttackRange 분기해서 MoveTo vs Melee
 | `UGJHealthBarWidget` | `WBP_EnemyHealthBar` | `HealthProgressBar` | `UpdateHealth(Current, Max)` | 적 머리 위, `UWidgetComponent` (Screen space) |
 | `UGJPlayerHUDWidget` | `WBP_PlayerHUD` | `HPBar`, `MPBar` | `UpdateHP(Current,Max)` / `UpdateMP(Current,Max)` | 좌상단, `AddToViewport()` |
 
-인벤토리/무기 페이지 UI(`UGJInventoryWidget`, `UGJInventorySlotWidget`, `UGJWeaponSlotWidget`)는 3.2절 참고.
+인벤토리/무기 페이지 UI(`UGJInventoryWidget`, `UGJInventorySlotWidget`, `UGJWeaponSlotWidget`)는 3.2절 참고. 게임오버 화면(`UGJGameOverWidget` → `WBP_GameOver`, `BindWidget: ReturnToHubButton` / `BindWidgetOptional: RunCountText`)은 6.5절 참고 — 이것도 동일한 C++ 베이스 + `BindWidget` 패턴이다.
 
 `WBP_AmmoUI`는 위 두 개와 달리 **자체 이벤트 그래프**로 동작함(값 갱신 함수는 C++이 아니라 BP `UpdateAmmoText(CurrentAmmo, MaxAmmo)` 함수). Construct 시점에 `GetOwningPlayerPawn()`→`AGJCharacter`로 캐스트한 뒤 **`AGJCharacter::OnActiveWeaponAmmoChanged`를 구독**하고 초기값을 한 번 그려줌. 예전에는 그 시점의 `EquippedWeapon`을 직접 캐스팅해서 `AGJWeapon_Ranged::OnAmmoChanged`에 바인딩하는 방식이었는데, 그러면 무기를 스왑해도 재바인딩이 안 돼서 탄약 표시가 예전 무기 것에 고정되는 버그가 있었음 — 캐릭터 델리게이트로 옮기면서 해결(2.2절 "무기 장착/스왑" 참고).
 
@@ -402,7 +439,11 @@ BT 트리 구조 자체(Selector로 IsInAttackRange 분기해서 MoveTo vs Melee
 - `OnDeath()` BlueprintImplementableEvent는 비어있음 (사망 연출 미구현)
 - `DropWeapon()`의 드랍 위치는 캐릭터 정면 100유닛 고정 — 바닥 스냅이나 다른 무기/장애물과 겹침 방지 처리는 없음
 - 무기 스왑 몽타주(`SwapMontageAsset`)는 데이터 테이블에서 아직 안 채웠을 수 있음 — 비어있으면 그냥 즉시 교체(정상 동작). 테스트용으로 다른 용도 몽타주(닷지 등)를 임시로 재사용해도 `OnMontageEndedEvent`가 상태 기준으로 분기해서 안전하지만, 실제 전용 스왑 애님이 생기면 교체 필요
-- `FItemData.bPersistAcrossRuns`는 데이터 필드만 있고, 실제로 회차(런) 전환 시 인벤토리를 정리/유지하는 세이브·로드나 런 전환 시스템 자체가 아직 없어서 이 값을 읽어서 처리하는 코드는 없음
+- `FItemData.bPersistAcrossRuns`는 데이터 필드만 있고 여전히 읽히지 않음 — 런 루프(M1)는 완성됐지만 "무엇이 회차를 넘어 남는가"를 정하는 인계 규칙은 미구현 (M3)
+- `RebirthCount`는 누적 도전 횟수로 설계되었으나 세이브가 없어 앱 종료 시 0으로 돌아감 (M4에서 해결 예정)
+- 런은 **사망으로만** 끝남 — 클리어(승리) 조건이 없음 (M5)
+- 허브에는 런 시작 포탈 하나뿐 — 상점/영구 강화 미구현 (M6)
+- `RequiredEXP`는 데이터 테이블에만 있고 코드에서 한 번도 안 읽힘 — EXP/레벨업 자체가 없어서 `UpdateCharacterStat`은 BeginPlay에서 레벨 1로 한 번만 호출됨 (M2)
 
 ---
 

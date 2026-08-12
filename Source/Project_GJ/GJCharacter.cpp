@@ -70,6 +70,14 @@ void AGJCharacter::BeginPlay()
         PC->bShowMouseCursor = true;
         PC->bEnableClickEvents = true;
         PC->bEnableMouseOverEvents = true;
+
+        // 게임오버 화면에서 건 FInputModeUIOnly는 뷰포트 클라이언트에 저장되는데, 뷰포트는
+        // 월드보다 오래 살기 때문에 OpenLevel로 레벨을 갈아끼워도 "게임 입력 무시" 상태가
+        // 그대로 따라온다. 그러면 허브에 도착해도 WASD가 전혀 안 먹고 마우스만 움직인다.
+        // 캐릭터가 스폰될 때마다 게임 입력 모드로 되돌려서, 어느 레벨이든 항상 정상 상태로 시작하게 함.
+        FInputModeGameOnly InputMode;
+        InputMode.SetConsumeCaptureMouseDown(false);
+        PC->SetInputMode(InputMode);
     }
 
     if (UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance())

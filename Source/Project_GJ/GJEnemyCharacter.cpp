@@ -8,6 +8,7 @@
 #include "AIController.h"
 #include "BrainComponent.h"
 #include "UObject/ConstructorHelpers.h"
+#include "GJCombatStatics.h"
 #include "Components/WidgetComponent.h"
 #include "GJHealthBarWidget.h"
 
@@ -148,7 +149,13 @@ void AGJEnemyCharacter::ApplyAttackDamage()
         return;
     }
 
-    UGameplayStatics::ApplyDamage(TargetPlayer, AttackDamage, GetController(), this, UDamageType::StaticClass());
+    // 적은 공격력 배율을 쓰지 않는다 - AttackDamage가 이미 최종 공격력이라 AttackPower에 0을 넘긴다.
+    // 치명타는 적도 굴린다.
+    bool bWasCritical = false;
+    const float OutgoingDamage = UGJCombatStatics::CalculateOutgoingDamage(
+        AttackDamage, 0.f, CritChance, CritMultiplier, bWasCritical);
+
+    UGameplayStatics::ApplyDamage(TargetPlayer, OutgoingDamage, GetController(), this, UDamageType::StaticClass());
 }
 
 void AGJEnemyCharacter::HandleDeath()

@@ -2,6 +2,8 @@
 #include "Engine/World.h"
 #include "Components/MeshComponent.h" // 무기 메시에 따라 Static/Skeletal 포함
 #include "GJProjectile.h"
+#include "GJCombatStatics.h"
+#include "GJCharacter.h"
 
 AGJWeapon_Ranged::AGJWeapon_Ranged()
 {
@@ -112,8 +114,25 @@ void AGJWeapon_Ranged::Fire()
     if (ProjectileToFire)
     {
         ProjectileToFire->SetActorLocationAndRotation(MuzzleLocation, ShootDirection.Rotation());
-        // 데이터 테이블에서 가져온 데미지/속도/사거리 그대로 발사합니다.
-        ProjectileToFire->FireInDirection(ShootDirection, WeaponStat.BaseDamage, WeaponStat.ProjectileSpeed, WeaponStat.Range);
+
+        // 무기를 든 캐릭터의 공격력/치명타를 반영해 실제 발사 데미지를 계산한다.
+        // OnPickedUp에서 SetInstigator를 하므로 플레이어가 든 무기는 항상 여기서 캐릭터를 찾을 수 있다.
+        float AttackPower = 0.f;
+        float CritChance = 0.f;
+        float CritMultiplier = 1.f;
+        if (AGJCharacter* OwningCharacter = Cast<AGJCharacter>(GetInstigator()))
+        {
+            AttackPower = OwningCharacter->GetBaseAttackPower();
+            CritChance = OwningCharacter->CritChance;
+            CritMultiplier = OwningCharacter->CritMultiplier;
+        }
+
+        // 캐스팅이 실패하면 위 기본값 그대로라 무기 기본 데미지만 나간다(배율 1배, 치명타 없음)
+        bool bWasCritical = false;
+        const float OutgoingDamage = UGJCombatStatics::CalculateOutgoingDamage(
+            WeaponStat.BaseDamage, AttackPower, CritChance, CritMultiplier, bWasCritical);
+
+        ProjectileToFire->FireInDirection(ShootDirection, OutgoingDamage, WeaponStat.ProjectileSpeed, WeaponStat.Range);
 
         CurrentAmmo--;
         LastFireTime = CurrentTime;

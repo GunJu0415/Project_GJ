@@ -60,6 +60,8 @@ UI (UUserWidget)
 ├─ UGJWeaponSlotWidget    — 무기 페이지 한 칸 (클릭으로 장착 전환, 드래그로 1/2번 자리 교체)
 └─ UGJGameOverWidget      — 런 종료 시 뜨는 게임오버 화면
 
+UGJCombatStatics (UBlueprintFunctionLibrary) — 데미지 공식 단일 소스
+
 데이터 (GJGameTypes.h, USTRUCT : FTableRowBase)
 ├─ FCharacterStat  — DT_CharacterStat
 ├─ FWeaponStat     — DT_WeaponStat
@@ -289,13 +291,30 @@ UI (UUserWidget)
 엔진 표준 `AActor::TakeDamage`를 그대로 씀 (GAS 아님).
 
 ```
-AGJProjectile::OnHit()
-  → UGameplayStatics::ApplyDamage(HitCharacter, ...)
-  → AGJBaseCharacter::TakeDamage() [override]
-      → CurrentHP -= ActualDamage
-      → OnDamaged.Broadcast()   ← UI(체력바/HUD)가 여길 구독
-      → CurrentHP <= 0 이면 HandleDeath()
+[공격 측] 무기 발사 / 적 근접 공격
+  → UGJCombatStatics::CalculateOutgoingDamage(무기데미지, 공격력, 치명타확률, 치명타배율)
+      = 무기데미지 x (1 + 공격력/100) x 치명타배율
+  → UGameplayStatics::ApplyDamage(대상, 계산된 데미지)
+
+[방어 측] AGJBaseCharacter::TakeDamage() [override]
+  → UGJCombatStatics::ApplyDefense(받은 데미지, 내 Defense)
+      = 데미지 x 100/(100 + 방어력)     ← 방어력은 여기 한 곳에서만
+  → CurrentHP 차감
+  → OnDamaged.Broadcast(경감 후 데미지)   ← UI(체력바/HUD)가 여길 구독
+  → CurrentHP <= 0 이면 HandleDeath()
 ```
+
+**공식이 사는 곳**: `UGJCombatStatics`(`GJCombatStatics.h/.cpp`, `UBlueprintFunctionLibrary`). 공격 계산과 방어 경감이 서로 다른 지점에서 호출되지만 **공식 자체는 이 파일 하나에만** 있다 — 밸런스 조정 시 여기만 보면 된다.
+
+**방어력은 체감형**이다(`100/(100+방어력)`). 방어력 100마다 "체력이 1배씩 더 있는" 효과이고, 아무리 올려도 100% 무효화에 도달하지 않는다.
+
+**방어력은 `TakeDamage` 한 곳에서만 적용된다.** 따라서 앞으로 어떤 데미지 소스가 추가되어도(장판, 도트, 폭발, 근접 히트 판정) 경감이 자동으로 걸린다. 공격자가 최종값까지 계산하는 방식은 소스가 늘 때마다 방어력 적용을 빠뜨릴 위험이 있어 채택하지 않았다.
+
+**최소 데미지 하한**: 방어력이 극단적으로 높아도 데미지가 0에 수렴해 사실상 무적이 되지 않도록 하한을 둔다. 단 하한값은 `min(1.0, 들어온 데미지)`라, 원래 1보다 약한 공격이 방어력을 거치며 오히려 세지는 역전은 생기지 않는다.
+
+**적은 공격력 배율을 쓰지 않는다** — `EnemyStat.AttackDamage`가 이미 최종 공격력이라 `AttackPower`에 0을 넘긴다. 치명타는 적도 굴린다.
+
+**치명타 여부는 대상에게 전달되지 않는다.** `CalculateOutgoingDamage`가 `bOutWasCritical`을 돌려주지만 공격자 쪽에서만 알 수 있다. 치명타 데미지 폰트 같은 UI를 붙이려면 커스텀 `FDamageEvent`가 필요하다.
 
 - **원거리 투사체만** 데미지를 줌. 근접 콤보(`Attack1`/`Attack2`... 몽타주 섹션)는 아직 히트 판정(트레이스/콜리전)이 전혀 없음
 - `AnimNotify_GameplayEvent`에 `EGameplayNotifyType::MeleeHit` 케이스가 있지만 스텁 상태(`// Character->PerformMeleeHit();`)이고, 이 노티파이는 `AGJCharacter`로만 캐스트하므로 지금 붙여도 적한텐 안 먹음
@@ -383,8 +402,13 @@ BT 트리 구조 자체(Selector로 IsInAttackRange 분기해서 MoveTo vs Melee
 |---|---|---|
 | `MaxHP` | 100 | |
 | `MaxMP` | 50 | 재장전 시 소모됨 |
-| `BaseAttackPower` | 10 | |
+| `BaseAttackPower` | 10 | 무기 데미지에 배율로 적용됨 (`무기데미지 x (1 + 공격력/100)`) |
 | `RequiredEXP` | 100 | |
+| `Defense` | 0 | 받는 데미지 경감 (체감형, 100이면 50% 경감) |
+| `MoveSpeed` | 600 | `CharacterMovement.MaxWalkSpeed`에 적용. 이전에는 설정하지 않아 엔진 기본값을 쓰고 있었음 |
+| `CooldownReduction` | 0 | **미사용** — 스킬 시스템 전까지 연결되지 않음 |
+| `CritChance` | 0 | 치명타 확률. **0.0~1.0 범위**(0.25 = 25%). 퍼센트 정수가 아님 |
+| `CritMultiplier` | 2.0 | 치명타 시 데미지 배율 |
 
 ### `FWeaponStat` — `DT_WeaponStat`
 | 필드 | 기본값 | 설명 |
@@ -411,6 +435,9 @@ BT 트리 구조 자체(Selector로 IsInAttackRange 분기해서 MoveTo vs Melee
 | `AttackCooldown` | 1.5 | |
 | `MoveSpeed` | 300 | `CharacterMovement.MaxWalkSpeed`에 적용 |
 | `AttackWindup` | 0.3 | 공격 결정~실제 데미지 판정까지 선딜레이 |
+| `Defense` | 0 | 받는 데미지 경감 (체감형) |
+| `CritChance` | 0 | 치명타 확률 (0.0~1.0) |
+| `CritMultiplier` | 2.0 | 치명타 배율 |
 
 ### `FItemData` — 예: `DT_ItemData` (행 이름 = 아이템 ID)
 | 필드 | 기본값 | 설명 |
@@ -444,6 +471,8 @@ BT 트리 구조 자체(Selector로 IsInAttackRange 분기해서 MoveTo vs Melee
 - 런은 **사망으로만** 끝남 — 클리어(승리) 조건이 없음 (M5)
 - 허브에는 런 시작 포탈 하나뿐 — 상점/영구 강화 미구현 (M6)
 - `RequiredEXP`는 데이터 테이블에만 있고 코드에서 한 번도 안 읽힘 — EXP/레벨업 자체가 없어서 `UpdateCharacterStat`은 BeginPlay에서 레벨 1로 한 번만 호출됨 (M2)
+- `FCharacterStat.CooldownReduction`은 필드만 있고 어디에도 연결되지 않음 — 적용 대상이 될 스킬 시스템이 아직 없음
+- 치명타가 터져도 화면에 표시되지 않음 — 치명타 여부가 공격자 쪽에만 있어서, UI를 붙이려면 커스텀 `FDamageEvent`가 필요
 
 ---
 

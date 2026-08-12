@@ -24,6 +24,28 @@ struct FCharacterStat : public FTableRowBase
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stat")
     float RequiredEXP = 100.0f;
+
+    // 받는 데미지를 경감시킨다. 체감형이라 아무리 올려도 무적이 되지 않음 (100이면 50% 경감)
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stat")
+    float Defense = 0.f;
+
+    // 캐릭터 이동 속도. 지금까지 플레이어는 이 값을 어디서도 설정하지 않아 엔진 기본값(600)을
+    // 그대로 썼는데, 기본값을 600으로 맞춰 두었으므로 기존 플레이 감각은 바뀌지 않는다.
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stat")
+    float MoveSpeed = 600.f;
+
+    // 스킬 쿨타임 감소. 적용 대상이 될 스킬 시스템이 아직 없어서 지금은 어디에도 연결되지 않는다.
+    // 나중에 스탯을 또 추가하면 데이터 테이블 마이그레이션을 두 번 해야 하므로 미리 자리를 잡아둔 것.
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stat")
+    float CooldownReduction = 0.f;
+
+    // 치명타 확률. 0.0~1.0 범위다 (0.25 = 25%). 퍼센트 정수가 아님에 주의.
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stat")
+    float CritChance = 0.f;
+
+    // 치명타가 터졌을 때 데미지 배율
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stat")
+    float CritMultiplier = 2.f;
 };
 
 // -----------------------------------------
@@ -121,6 +143,17 @@ struct FEnemyStat : public FTableRowBase
     // 공격 판정(데미지 적용)까지의 선딜레이(초). 재생 중인 몽타주의 실제 타격 타이밍에 맞춰 조절.
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stat")
     float AttackWindup = 0.3f;
+
+    // 받는 데미지를 경감시킨다. 적마다 단단함을 다르게 줄 수 있다 (100이면 50% 경감)
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stat")
+    float Defense = 0.f;
+
+    // 치명타 확률. 0.0~1.0 범위다 (0.25 = 25%)
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stat")
+    float CritChance = 0.f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stat")
+    float CritMultiplier = 2.f;
 };
 
 // -----------------------------------------

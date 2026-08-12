@@ -53,6 +53,18 @@ public:
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Stat")
     float CurrentHP = 100.f;
 
+    // 받는 데미지 경감에 쓰인다. TakeDamage가 읽으므로 플레이어/적 모두 여기에 둔다.
+    // 실제 값은 각자의 데이터 테이블에서 채운다 (플레이어는 UpdateCharacterStat, 적은 ApplyEnemyStat).
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Stat")
+    float Defense = 0.f;
+
+    // 치명타 확률 (0.0~1.0). 공격할 때 굴린다.
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Stat")
+    float CritChance = 0.f;
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Stat")
+    float CritMultiplier = 2.f;
+
     UFUNCTION(BlueprintPure, Category = "Stat")
     bool IsDead() const { return CurrentHP <= 0.f; }
 

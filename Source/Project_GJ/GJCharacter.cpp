@@ -805,6 +805,15 @@ void AGJCharacter::UpdateCharacterStat(int32 NewLevel)
 
             MaxMP = CurrentCharacterStat.MaxMP;
             CurrentMP = MaxMP;
+
+            // 전투 스탯 - TakeDamage(방어력)와 무기 발사(치명타)가 읽는다
+            Defense = CurrentCharacterStat.Defense;
+            CritChance = CurrentCharacterStat.CritChance;
+            CritMultiplier = CurrentCharacterStat.CritMultiplier;
+
+            // 플레이어 이동 속도는 지금까지 어디서도 설정하지 않아 엔진 기본값을 쓰고 있었다.
+            // 이제 데이터 테이블 값으로 명시적으로 설정한다.
+            GetCharacterMovement()->MaxWalkSpeed = CurrentCharacterStat.MoveSpeed;
         }
     }
 

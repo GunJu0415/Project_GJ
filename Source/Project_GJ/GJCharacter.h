@@ -226,6 +226,10 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Item")
     void ApplyConsumableEffect(float HealAmount, float ManaAmount);
 
+    // 무기가 발사 시 공격력 배율을 계산할 때 읽는다 (CurrentCharacterStat이 protected라 getter가 필요함)
+    UFUNCTION(BlueprintPure, Category = "Character Stat")
+    float GetBaseAttackPower() const { return CurrentCharacterStat.BaseAttackPower; }
+
 protected:
 
     UPROPERTY(EditDefaultsOnly, Category = "Weapon")

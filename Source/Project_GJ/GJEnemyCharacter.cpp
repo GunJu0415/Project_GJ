@@ -76,6 +76,11 @@ void AGJEnemyCharacter::ApplyEnemyStat()
     AttackCooldown = RowData->AttackCooldown;
     AttackWindup = RowData->AttackWindup;
     GetCharacterMovement()->MaxWalkSpeed = RowData->MoveSpeed;
+
+    // 전투 스탯 - TakeDamage(방어력)와 ApplyAttackDamage(치명타)가 읽는다
+    Defense = RowData->Defense;
+    CritChance = RowData->CritChance;
+    CritMultiplier = RowData->CritMultiplier;
 }
 
 void AGJEnemyCharacter::Tick(float DeltaTime)

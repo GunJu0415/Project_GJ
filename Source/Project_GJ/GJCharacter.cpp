@@ -19,6 +19,7 @@
 #include "GJInventoryWidget.h"
 #include "Kismet/GameplayStatics.h"
 #include "GameFramework/PlayerController.h"
+#include "GJGameMode.h"
 
 AGJCharacter::AGJCharacter()
 {
@@ -117,6 +118,18 @@ void AGJCharacter::HandleDeath()
     // 죽는 순간 연사 중이었다면 즉시 멈춤 (그렇지 않으면 Tick에서 TryAutoFire가 계속 호출됨 -
     // Dead 상태 체크로 어차피 막히긴 하지만, 아예 호출 자체를 멈추는 게 더 깔끔함)
     bIsAutoFiring = false;
+
+    // 런 종료 흐름(회차 카운트, 화면, 레벨 이동)은 전부 게임 모드가 담당한다.
+    // 캐릭터는 "죽었다"는 사실만 알리고 게임 흐름은 알지 못한다.
+    if (AGJGameMode* GJGameMode = Cast<AGJGameMode>(UGameplayStatics::GetGameMode(this)))
+    {
+        GJGameMode->OnPlayerDied();
+    }
+    else
+    {
+        // 다른 게임 모드를 쓰는 레벨에서 죽어도 크래시하지 않도록 로그만 남긴다
+        UE_LOG(LogTemp, Warning, TEXT("HandleDeath: GameMode is not AGJGameMode. The run end flow will not run in this level."));
+    }
 }
 
 // ==========================================

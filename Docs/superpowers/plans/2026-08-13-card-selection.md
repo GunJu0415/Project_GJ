@@ -281,8 +281,9 @@ EOF
 **Interfaces:**
 - Consumes: `FCardData`, `ECardEffectType` (Task 1), `AGJCharacter::GetWeaponInSlot`
 - Produces:
-  - `UGJCardComponent` — `CardTable`, `NumCardsToDraw`, `TakenCards`, `DrawCards()`
-  - `TArray<FName> UGJCardComponent::DrawCards()`
+  - `UGJCardComponent` — `CardTable`, `NumCardsToDraw`, `BonusCardSlots`, `ExtraCardChance`, `TakenCards`
+  - `int32 UGJCardComponent::GetDrawCount() const`
+  - `TArray<FName> UGJCardComponent::DrawCards(int32 Count) const`
   - `void UGJCardComponent::GJDrawCards()` (`UFUNCTION(Exec)`)
   - `AGJCharacter::CardComponent` (`protected` 멤버) + `GetCardComponent()`
 
@@ -330,18 +331,33 @@ protected:
     UPROPERTY(EditDefaultsOnly, Category = "Card")
     UDataTable* CardTable;
 
-    // 한 번에 보여줄 선택지 장수. 코드에 3을 박아두면 "2장짜리 선택" 같은 조정에
-    // 컴파일이 필요해진다.
+    // 기본 선택지 장수. 코드에 3을 박아두면 "2장짜리 선택" 같은 조정에 컴파일이 필요해진다.
+    // 이 값은 원본이라 런타임에 덮어쓰지 않는다 - 보너스는 아래 두 멤버로 얹는다.
     UPROPERTY(EditDefaultsOnly, Category = "Card")
     int32 NumCardsToDraw = 3;
+
+    // 영구 특성으로 늘어난 선택지 수. 지금은 아무도 안 바꾸지만, 메타 프로그레션(M6)이
+    // 붙을 자리를 미리 뚫어둔다. 여기 대신 NumCardsToDraw를 직접 덮으면 원본값을 잃는다.
+    UPROPERTY(BlueprintReadWrite, Category = "Card")
+    int32 BonusCardSlots = 0;
+
+    // 이 확률로 선택지가 한 장 더 뜬다 (0.2 = 20%). 판정은 뽑기 함수 밖에서 한다 -
+    // DrawCards가 "몇 장 뽑을지"까지 정하면 리롤할 때마다 장수가 흔들린다.
+    UPROPERTY(BlueprintReadWrite, Category = "Card")
+    float ExtraCardChance = 0.f;
 
     // 이미 고른 bStackable=false 카드. 스택 가능한 카드는 기록할 이유가 없다.
     // 런마다 컴포넌트가 새로 만들어지므로 초기화 코드가 필요 없다.
     TSet<FName> TakenCards;
 
-    // 가중 랜덤 비복원 추출로 최대 NumCardsToDraw장을 뽑는다.
+    // 이번에 몇 장 뽑을지 정한다. 확률 판정이 들어있어 호출할 때마다 결과가 다를 수 있으므로,
+    // 한 번의 선택 화면에는 한 번만 부른다(리롤은 장수를 다시 굴리지 않는다).
+    int32 GetDrawCount() const;
+
+    // 가중 랜덤 비복원 추출로 최대 Count장을 뽑는다.
     // 후보가 부족하면 있는 만큼만, 하나도 없으면 빈 배열을 돌려준다.
-    TArray<FName> DrawCards();
+    // 부작용이 없다(TakenCards를 건드리지 않는다). 리롤이 이 함수 재호출만으로 되는 이유다.
+    TArray<FName> DrawCards(int32 Count) const;
 
     // 소유자를 AGJCharacter로 캐스팅해서 돌려준다. 다른 액터에 잘못 붙였으면 nullptr.
     AGJCharacter* GetOwnerCharacter() const;
@@ -387,7 +403,20 @@ static bool IsStatEffectEmpty(const FStatModifier& Modifier)
     return AllZero(Modifier.Add) && AllZero(Modifier.Percent);
 }
 
-TArray<FName> UGJCardComponent::DrawCards()
+int32 UGJCardComponent::GetDrawCount() const
+{
+    int32 Count = NumCardsToDraw + BonusCardSlots;
+
+    if (ExtraCardChance > 0.f && FMath::FRand() < ExtraCardChance)
+    {
+        Count++;
+    }
+
+    // 0장이 되면 선택 화면이 빈 채로 떠서 진행이 막힌다. 데이터를 어떻게 넣든 최소 1장은 보장한다.
+    return FMath::Max(Count, 1);
+}
+
+TArray<FName> UGJCardComponent::DrawCards(int32 Count) const
 {
     TArray<FName> Result;
 
@@ -440,7 +469,7 @@ TArray<FName> UGJCardComponent::DrawCards()
     }
 
     // 2. 가중 랜덤 비복원 추출
-    const int32 DrawCount = FMath::Min(NumCardsToDraw, Candidates.Num());
+    const int32 DrawCount = FMath::Min(Count, Candidates.Num());
     for (int32 Draw = 0; Draw < DrawCount; Draw++)
     {
         // 매 반복마다 총합을 다시 구한다. 뽑힌 카드를 목록에서 빼고도 총합을 그대로 쓰면
@@ -479,7 +508,7 @@ TArray<FName> UGJCardComponent::DrawCards()
 
 void UGJCardComponent::GJDrawCards()
 {
-    const TArray<FName> Drawn = DrawCards();
+    const TArray<FName> Drawn = DrawCards(GetDrawCount());
 
     if (Drawn.Num() == 0)
     {
@@ -864,7 +893,7 @@ void UGJCardSelectWidget::HandleCardClicked(int32 ChoiceIndex)
 class UGJCardSelectWidget;
 ```
 
-그리고 `protected:` 블록의 `TArray<FName> DrawCards();` **위**에 추가한다:
+그리고 `protected:` 블록의 `int32 GetDrawCount() const;` **위**에 추가한다:
 
 ```cpp
     // 선택지 화면 클래스 (WBP_CardSelect). 비어 있으면 카드 선택을 건너뛴다.
@@ -971,7 +1000,7 @@ bool UGJCardComponent::OpenChoiceUI(const TArray<FGJChoiceEntry>& Entries)
 
 void UGJCardComponent::GJShowCards()
 {
-    const TArray<FName> Drawn = DrawCards();
+    const TArray<FName> Drawn = DrawCards(GetDrawCount());
     if (Drawn.Num() == 0)
     {
         UE_LOG(LogTemp, Warning, TEXT("GJShowCards: 뽑을 수 있는 카드가 없습니다."));
@@ -1186,7 +1215,9 @@ void UGJCardComponent::ShowNextChoice()
     // 재귀가 아니라 루프인 이유: 풀이 완전히 비었을 때 대기열 길이만큼 스택이 쌓인다.
     while (PendingChoices > 0)
     {
-        CurrentCardIds = DrawCards();
+        // 장수는 선택 화면 한 번당 한 번만 굴린다. 리롤이 붙어도 여기가 아니라
+        // CurrentCardIds.Num()을 다시 쓰게 되므로 장수가 흔들리지 않는다.
+        CurrentCardIds = DrawCards(GetDrawCount());
         if (CurrentCardIds.Num() > 0)
         {
             break;

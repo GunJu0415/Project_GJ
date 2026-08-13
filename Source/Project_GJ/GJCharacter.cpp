@@ -1157,6 +1157,20 @@ bool AGJCharacter::PickUpWeapon(AGJWeaponBase* NewWeapon)
     return true;
 }
 
+bool AGJCharacter::ReplaceWeaponInSlot(int32 SlotIndex, AGJWeaponBase* NewWeapon)
+{
+    if (!NewWeapon || !WeaponSlots.IsValidIndex(SlotIndex))
+    {
+        return false;
+    }
+
+    // 순서가 중요하다. 먼저 그 슬롯을 비워야 PickUpWeapon의 "빈 슬롯을 먼저 채운다" 로직이
+    // 정확히 그 자리를 고른다. 순서를 뒤집으면 PickUpWeapon이 슬롯이 꽉 찬 것으로 보고
+    // 현재 활성 무기를 떨어뜨려서, 플레이어가 고른 것과 다른 무기가 사라진다.
+    DropWeapon(SlotIndex);
+    return PickUpWeapon(NewWeapon);
+}
+
 void AGJCharacter::SwapToWeaponSlot(int32 SlotIndex)
 {
     if (!WeaponSlots.IsValidIndex(SlotIndex) || !WeaponSlots[SlotIndex])

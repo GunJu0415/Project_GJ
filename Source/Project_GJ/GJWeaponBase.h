@@ -65,6 +65,12 @@ protected:
 
 public:
     FORCEINLINE FWeaponStat GetWeaponStat() const { return WeaponStat; }
+
+    // 무기 교체 UI에 표시할 이름. FWeaponStat에는 이름 필드가 없고 데이터 테이블의
+    // 행 이름이 곧 무기 ID라서 그걸 그대로 쓴다.
+    UFUNCTION(BlueprintPure, Category = "Weapon Stat")
+    FName GetWeaponRowName() const { return WeaponDataHandle.RowName; }
+
     FORCEINLINE UAnimMontage* GetAttackMontage() const { return AttackMontage; }
     FORCEINLINE UAnimMontage* GetReloadMontage() const { return ReloadMontage; }
     FORCEINLINE UAnimMontage* GetSwapMontage() const { return SwapMontage; }

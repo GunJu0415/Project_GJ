@@ -353,6 +353,14 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Weapon")
     bool PickUpWeapon(AGJWeaponBase* NewWeapon);
 
+    // 지정한 슬롯의 무기를 버리고 그 자리에 새 무기를 넣는다.
+    // 카드로 무기를 받을 때 "어느 무기를 버릴지" 고른 결과를 적용하는 경로다.
+    // DropWeapon을 그냥 public으로 여는 대신 이 함수를 두는 이유: "버리고 넣는" 두 동작의
+    // 순서가 맞아야 플레이어가 고른 슬롯에 정확히 들어가는데, 그 순서를 호출자마다
+    // 기억하게 하면 언젠가 틀린다.
+    UFUNCTION(BlueprintCallable, Category = "Weapon")
+    bool ReplaceWeaponInSlot(int32 SlotIndex, AGJWeaponBase* NewWeapon);
+
     // 지정한 슬롯(0/1)의 무기로 전환 - 1·2번 키 입력과 인벤토리 무기 페이지 클릭 양쪽에서 호출됨.
     // 무기의 SwapMontage가 있으면 그 몽타주를 재생하는 동안 WeaponSwap 상태로 다른 입력을 막음.
     UFUNCTION(BlueprintCallable, Category = "Weapon")

@@ -4,6 +4,11 @@
 #include "Engine/DataTable.h"
 #include "GJGameTypes.generated.h" // 이름 맞춰주기
 
+// FCardData가 TSubclassOf로만 참조하므로 전방 선언으로 충분하다.
+// 여기서 GJWeaponBase.h를 include하면 GJWeaponBase.h가 GJGameTypes.h를 다시 include해서
+// 순환이 된다.
+class AGJWeaponBase;
+
 // -----------------------------------------
 // 캐릭터 스탯 데이터 테이블 구조체
 // -----------------------------------------
@@ -113,6 +118,75 @@ struct FStatModifier
     // 증가율 (0.15 = +15%)
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Modifier")
     FStatValues Percent;
+};
+
+// -----------------------------------------
+// 카드 (레벨업 선택지)
+// -----------------------------------------
+
+UENUM(BlueprintType)
+enum class ECardEffectType : uint8
+{
+    // StatEffect를 AddStatBonus로 넘긴다
+    StatBonus   UMETA(DisplayName = "스탯 보너스"),
+    // WeaponClass를 스폰해서 지급한다
+    GrantWeapon UMETA(DisplayName = "무기 획득"),
+    // 미구현 - 스킬 시스템(M2.7)이 생기기 전까지는 골라도 경고만 찍힌다
+    Ability     UMETA(DisplayName = "능력 획득 (미구현)")
+};
+
+// 카드 한 장의 정의. 행 이름이 곧 카드 ID다.
+USTRUCT(BlueprintType)
+struct FCardData : public FTableRowBase
+{
+    GENERATED_BODY()
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Card")
+    FText DisplayName;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Card")
+    FText Description;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Card")
+    UTexture2D* Icon = nullptr;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Card")
+    ECardEffectType EffectType = ECardEffectType::StatBonus;
+
+    // EffectType == StatBonus일 때만 쓰인다
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Card")
+    FStatModifier StatEffect;
+
+    // EffectType == GrantWeapon일 때만 쓰인다
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Card")
+    TSubclassOf<AGJWeaponBase> WeaponClass;
+
+    // false면 한 번 고른 뒤 풀에서 영구 제외된다(무기나 고유 효과용).
+    // true면 여러 번 등장할 수 있어 "같은 카드를 쌓아 빌드를 밀어붙이는" 플레이가 가능하다.
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Card")
+    bool bStackable = true;
+
+    // 가중 랜덤의 가중치. 0 이하면 절대 안 뽑힌다(카드를 임시로 끄는 용도로도 쓸 수 있다).
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Card")
+    float Weight = 1.f;
+};
+
+// 선택지 위젯에 넘기는 표시용 데이터.
+// 위젯이 FCardData를 직접 알면 무기 교체 화면을 따로 만들어야 하므로, 표시에 필요한
+// 것만 담은 이 구조체로 한 겹 끊는다.
+USTRUCT(BlueprintType)
+struct FGJChoiceEntry
+{
+    GENERATED_BODY()
+
+    UPROPERTY(BlueprintReadOnly, Category = "Choice")
+    FText DisplayName;
+
+    UPROPERTY(BlueprintReadOnly, Category = "Choice")
+    FText Description;
+
+    UPROPERTY(BlueprintReadOnly, Category = "Choice")
+    UTexture2D* Icon = nullptr;
 };
 
 // -----------------------------------------

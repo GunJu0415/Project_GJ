@@ -129,7 +129,7 @@ void AGJWeapon_Ranged::Fire()
         float CritMultiplier = 1.f;
         if (AGJCharacter* OwningCharacter = Cast<AGJCharacter>(GetInstigator()))
         {
-            AttackPower = OwningCharacter->GetBaseAttackPower();
+            AttackPower = OwningCharacter->GetAttackPower();
             CritChance = OwningCharacter->CritChance;
             CritMultiplier = OwningCharacter->CritMultiplier;
         }

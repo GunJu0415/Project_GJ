@@ -791,6 +791,7 @@ void AGJCharacter::OnMontageEndedEvent(UAnimMontage* Montage, bool bInterrupted)
 void AGJCharacter::UpdateCharacterStat(int32 NewLevel, bool bRestoreToFull)
 {
     CurrentLevel = NewLevel;
+
     if (CharacterStatTable)
     {
         FString RowName = FString::FromInt(CurrentLevel);
@@ -798,29 +799,70 @@ void AGJCharacter::UpdateCharacterStat(int32 NewLevel, bool bRestoreToFull)
 
         if (RowData)
         {
-            CurrentCharacterStat = *RowData;
-
-            // 레벨업 경로(bRestoreToFull=false)에서는 최대치가 오른 만큼만 현재값에 더한다.
-            // 체력 30/100에서 최대 체력이 120이 되면 50/120이 된다 - 성장의 이득은 주되
-            // 위험한 상태는 그대로 유지된다.
-            const float OldMaxHP = MaxHP;
-            MaxHP = CurrentCharacterStat.MaxHP;
-            CurrentHP = bRestoreToFull ? MaxHP : FMath::Clamp(CurrentHP + (MaxHP - OldMaxHP), 0.f, MaxHP);
-
-            const float OldMaxMP = MaxMP;
-            MaxMP = CurrentCharacterStat.MaxMP;
-            CurrentMP = bRestoreToFull ? MaxMP : FMath::Clamp(CurrentMP + (MaxMP - OldMaxMP), 0.f, MaxMP);
-
-            // 전투 스탯 - TakeDamage(방어력)와 무기 발사(치명타)가 읽는다
-            Defense = CurrentCharacterStat.Defense;
-            CritChance = CurrentCharacterStat.CritChance;
-            CritMultiplier = CurrentCharacterStat.CritMultiplier;
-
-            // 플레이어 이동 속도는 지금까지 어디서도 설정하지 않아 엔진 기본값을 쓰고 있었다.
-            // 이제 데이터 테이블 값으로 명시적으로 설정한다.
-            GetCharacterMovement()->MaxWalkSpeed = CurrentCharacterStat.MoveSpeed;
+            // 테이블 원본만 갱신한다. 실효값 계산은 RecalculateStats 한 곳에서만 한다.
+            BaseStat = *RowData;
         }
     }
+
+    // 행이 없거나 테이블이 비어 있어도 호출한다 - 그래야 HUD 갱신과 하한 처리가
+    // 어느 경로에서든 똑같이 걸린다.
+    RecalculateStats(bRestoreToFull);
+}
+
+void AGJCharacter::RecalculateStats(bool bRestoreToFull)
+{
+    // 실효값 = (테이블값 + 가산) x (1 + 증가율)
+    // 람다 하나로 9개 스탯을 같은 규칙으로 계산한다 - 규칙이 바뀌면 여기만 고친다.
+    auto Combine = [](float Base, float Add, float Percent)
+    {
+        return (Base + Add) * (1.f + Percent);
+    };
+
+    FCharacterStat& S = CurrentCharacterStat;
+
+    // MaxHP/MaxMP가 0이 되면 HUD의 Current/Max가 0으로 나누고, 최대 체력 0은 즉사다.
+    S.MaxHP = FMath::Max(Combine(BaseStat.MaxHP, StatBonus.Add.MaxHP, StatBonus.Percent.MaxHP), 1.f);
+    S.MaxMP = FMath::Max(Combine(BaseStat.MaxMP, StatBonus.Add.MaxMP, StatBonus.Percent.MaxMP), 1.f);
+
+    // RequiredEXP가 0 이하가 되면 AddEXP의 while 가드(RequiredEXP > 0)에 걸려 레벨업이
+    // 조용히 멈춘다. 크래시가 아니라 아무 일도 안 일어나서 원인 추적이 어려운 종류다.
+    S.RequiredEXP = FMath::Max(Combine(BaseStat.RequiredEXP, StatBonus.Add.RequiredEXP, StatBonus.Percent.RequiredEXP), 1.f);
+
+    // 공격력이 -100 아래로 가면 데미지 공식(무기데미지 x (1 + 공격력/100))이 음수를 내고,
+    // TakeDamage의 CurrentHP -= 음수가 맞은 쪽을 회복시킨다. 치명타 배율도 같은 이유다.
+    S.BaseAttackPower = FMath::Max(Combine(BaseStat.BaseAttackPower, StatBonus.Add.BaseAttackPower, StatBonus.Percent.BaseAttackPower), 0.f);
+    S.CritMultiplier  = FMath::Max(Combine(BaseStat.CritMultiplier,  StatBonus.Add.CritMultiplier,  StatBonus.Percent.CritMultiplier),  0.f);
+
+    S.MoveSpeed = FMath::Max(Combine(BaseStat.MoveSpeed, StatBonus.Add.MoveSpeed, StatBonus.Percent.MoveSpeed), 0.f);
+
+    // 치명타 확률에 상한은 두지 않는다 - 1.0을 넘기면 항상 치명타인데, 그건 빌드가
+    // 도달하려는 목표지 버그가 아니다.
+    S.CritChance = FMath::Max(Combine(BaseStat.CritChance, StatBonus.Add.CritChance, StatBonus.Percent.CritChance), 0.f);
+
+    // Defense는 하한을 걸지 않는다 - UGJCombatStatics::ApplyDefense가 이미 FMath::Max(Defense, 0)을
+    // 한다. 같은 방어를 두 곳에 두면 나중에 한쪽만 고치게 된다.
+    S.Defense = Combine(BaseStat.Defense, StatBonus.Add.Defense, StatBonus.Percent.Defense);
+
+    // 아직 아무도 읽지 않는다. 스킬 시스템이 생기면 그쪽에서 범위를 정한다.
+    S.CooldownReduction = Combine(BaseStat.CooldownReduction, StatBonus.Add.CooldownReduction, StatBonus.Percent.CooldownReduction);
+
+    // 최대치가 오른 만큼만 현재값에 더한다(bRestoreToFull=false).
+    // 레벨업과 "+5 최대 체력" 카드가 같은 이 한 줄을 지나므로, 카드가 현재 체력도 함께
+    // 올려주는 동작이 따로 짤 것 없이 나온다.
+    const float OldMaxHP = MaxHP;
+    MaxHP = S.MaxHP;
+    CurrentHP = bRestoreToFull ? MaxHP : FMath::Clamp(CurrentHP + (MaxHP - OldMaxHP), 0.f, MaxHP);
+
+    const float OldMaxMP = MaxMP;
+    MaxMP = S.MaxMP;
+    CurrentMP = bRestoreToFull ? MaxMP : FMath::Clamp(CurrentMP + (MaxMP - OldMaxMP), 0.f, MaxMP);
+
+    // TakeDamage와 GJWeapon_Ranged::Fire가 이 멤버들을 직접 읽으므로 실효값을 밀어 넣는다.
+    Defense        = S.Defense;
+    CritChance     = S.CritChance;
+    CritMultiplier = S.CritMultiplier;
+
+    GetCharacterMovement()->MaxWalkSpeed = S.MoveSpeed;
 
     UpdatePlayerHUD();
 }

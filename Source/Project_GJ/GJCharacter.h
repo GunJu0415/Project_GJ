@@ -209,6 +209,22 @@ protected:
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Character Stat")
     UDataTable* CharacterStatTable;
 
+    // --- 스탯 3층 구조 ---
+    // 아래 세 멤버는 각자 쓰는 주체가 하나씩만 있다. 이 규칙이 깨지면 보너스가 조용히 사라진다.
+
+    // (1) 테이블 원본. UpdateCharacterStat만 쓴다.
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Character Stat")
+    FCharacterStat BaseStat;
+
+    // (2) 카드/버프가 누적한 보너스. AddStatBonus만 쓴다.
+    // 런마다 캐릭터가 새로 스폰되면서 기본 생성되므로 초기화 코드가 따로 없다.
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Character Stat")
+    FStatModifier StatBonus;
+
+    // (3) 실효값 = (BaseStat + StatBonus.Add) x (1 + StatBonus.Percent).
+    // RecalculateStats만 쓰고, AddEXP/UpdatePlayerHUD/GetAttackPower가 읽는다.
+    // 예전에는 이 멤버가 테이블 원본이었다 - 의미가 "실효값"으로 바뀐 것이므로,
+    // 여기에 직접 대입하는 코드를 새로 만들면 안 된다.
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Character Stat")
     FCharacterStat CurrentCharacterStat;
 
@@ -236,14 +252,22 @@ protected:
     UFUNCTION(BlueprintCallable, Category = "Character Stat")
     void UpdateCharacterStat(int32 NewLevel, bool bRestoreToFull = true);
 
+    // BaseStat과 StatBonus를 합쳐 CurrentCharacterStat과 전투 스탯 멤버들을 다시 계산한다.
+    // 실효값을 쓰는 유일한 지점이다 - 계산 규칙을 바꾸거나 모디파이어를 목록 기반으로
+    // 갈아끼우게 되면 고칠 곳이 이 함수 하나다.
+    void RecalculateStats(bool bRestoreToFull);
+
 public:
     // 소비 아이템 사용 시 HP/MP 회복 적용 (인벤토리 컴포넌트의 UseItem에서 호출됨)
     UFUNCTION(BlueprintCallable, Category = "Item")
     void ApplyConsumableEffect(float HealAmount, float ManaAmount);
 
     // 무기가 발사 시 공격력 배율을 계산할 때 읽는다 (CurrentCharacterStat이 protected라 getter가 필요함)
+    // 보너스가 실린 실효값이다. 예전 이름이 GetBaseAttackPower였는데, 반환값이 더 이상
+    // "기본값"이 아니게 되어 이름이 거짓이 되므로 개명했다 - 그대로 뒀다면 나중에 누군가
+    // "보너스 이전 값이 필요하다"며 이 함수를 써서 조용히 틀린 계산을 하게 된다.
     UFUNCTION(BlueprintPure, Category = "Character Stat")
-    float GetBaseAttackPower() const { return CurrentCharacterStat.BaseAttackPower; }
+    float GetAttackPower() const { return CurrentCharacterStat.BaseAttackPower; }
 
     // 경험치를 더한다. 적 처치가 주 경로지만 퀘스트/상자 등 다른 소스가 생겨도 이 입구를 쓴다.
     // 한 번의 호출로 여러 레벨이 오를 수 있다(초과분은 다음 레벨로 이월됨).

@@ -49,6 +49,73 @@ struct FCharacterStat : public FTableRowBase
 };
 
 // -----------------------------------------
+// 스탯 보너스 (카드/버프가 더하는 값)
+// -----------------------------------------
+
+// 전부 0에서 시작하는 스탯 값 묶음.
+// FCharacterStat을 재사용하지 않는 이유: 그쪽 기본값이 MaxHP=100, MoveSpeed=600,
+// CritMultiplier=2라서 "보너스 없음"을 표현할 수 없다. 보너스 구조체는 기본 생성했을 때
+// 아무 효과가 없어야 한다.
+// FCharacterStat의 9개 필드를 전부 미러링한다 - 일부만 지원하면 "이 스탯은 왜 카드로 못
+// 올리지?"라는 비대칭이 생기고, 나중에 필드를 추가하면 USTRUCT 레이아웃이 바뀌어 그때는
+// 이 구조체를 쓰는 데이터 테이블(M2.6의 DT_CardData)까지 영향을 받는다.
+USTRUCT(BlueprintType)
+struct FStatValues
+{
+    GENERATED_BODY()
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stat")
+    float MaxHP = 0.f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stat")
+    float MaxMP = 0.f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stat")
+    float BaseAttackPower = 0.f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stat")
+    float RequiredEXP = 0.f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stat")
+    float Defense = 0.f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stat")
+    float MoveSpeed = 0.f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stat")
+    float CooldownReduction = 0.f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stat")
+    float CritChance = 0.f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stat")
+    float CritMultiplier = 0.f;
+
+    // 모디파이어를 합칠 때 쓴다. 필드별 단순 덧셈이다.
+    FStatValues& operator+=(const FStatValues& Other);
+};
+
+// 카드/버프 하나가 주는 효과.
+// Percent는 1.0이 아니라 0에서 시작하는 증가율이다(0.15 = +15%). 이 선택이 두 가지를
+// 공짜로 만든다 - 기본 생성한 모디파이어가 무효과가 되고, 모디파이어를 합치는 게 그냥
+// 필드 덧셈이 된다.
+// 증가율은 곱하지 않고 합산한다: +15% 두 장이면 1.30이지 1.3225가 아니다. 합산이
+// 밸런싱이 예측 가능하고, 카드를 많이 먹었을 때 지수적으로 터지지 않는다.
+USTRUCT(BlueprintType)
+struct FStatModifier
+{
+    GENERATED_BODY()
+
+    // 가산 (+5 체력)
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Modifier")
+    FStatValues Add;
+
+    // 증가율 (0.15 = +15%)
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Modifier")
+    FStatValues Percent;
+};
+
+// -----------------------------------------
 // 무기 스탯 데이터 테이블 구조체
 // -----------------------------------------
 USTRUCT(BlueprintType)

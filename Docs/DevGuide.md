@@ -144,7 +144,25 @@ UGJCombatStatics (UBlueprintFunctionLibrary) — 데미지 공식 단일 소스
 
 **레벨업은 회복이 아니다.** 최대치가 오른 만큼만 현재 HP/MP에 더해진다(체력 30/100 → 최대 120이 되면 50/120). 풀 회복시키면 "위험할 때 잡몹 하나 잡기"가 최고의 회복 수단이 되어 체력 관리 긴장이 사라진다.
 
-> ⚠️ **카드 시스템(스탯 증가 카드)을 붙이기 전에 base+bonus 레이어가 필요하다.** 지금 `UpdateCharacterStat`은 `CurrentCharacterStat = *RowData`로 구조체를 통째로 덮어쓰고 `MaxHP`/`Defense`/`CritChance`/`MoveSpeed`를 테이블 값으로 재대입한다. 카드가 "+5 최대 체력"을 더해도 **다음 레벨업에서 지워진다.** 카드를 주는 시점이 레벨업이라 이 충돌은 반드시 발생한다. `GetBaseAttackPower()`도 `CurrentCharacterStat`을 직접 읽어 보너스가 안 실린다.
+**스탯은 3층 구조다.** 카드/버프가 준 보너스가 레벨업에 지워지지 않게 하기 위한 것이다.
+
+| 층 | 멤버 | 쓰는 주체 | 읽는 쪽 |
+|---|---|---|---|
+| 테이블 원본 | `BaseStat` | `UpdateCharacterStat`만 | `RecalculateStats` |
+| 보너스 누적 | `StatBonus` (`FStatModifier`) | `AddStatBonus`만 | `RecalculateStats` |
+| **실효값** | `CurrentCharacterStat` | **`RecalculateStats`만** | `AddEXP`, `UpdatePlayerHUD`, `GetAttackPower` 등 전부 |
+
+실효값 계산은 `실효값 = (테이블값 + Add) x (1 + Percent)`이며, `Percent`는 1.0이 아니라 **0에서 시작하는 증가율**이다(0.15 = +15%). 그래야 기본 생성한 `FStatModifier`가 무효과가 되고 모디파이어 합치기가 필드 덧셈이 된다. 증가율은 **곱하지 않고 합산**한다 — `+15%` 두 장이면 1.30이지 1.3225가 아니다.
+
+`RecalculateStats`는 계산 후 **하한을 건다**: `MaxHP`/`MaxMP`/`RequiredEXP`는 최소 1, `BaseAttackPower`/`CritMultiplier`/`MoveSpeed`/`CritChance`는 최소 0. `RequiredEXP`가 0 이하가 되면 `AddEXP`의 루프 가드에 걸려 **레벨업이 조용히 멈추고**, 공격력이 -100 아래로 가면 데미지가 음수가 되어 **맞은 쪽을 회복시킨다.** `Defense`는 `ApplyDefense`가 이미 하한을 걸므로 여기선 안 건다. `CritChance`에 상한은 없다 — 1.0 초과는 빌드의 목표지 버그가 아니다.
+
+**현재 HP에도 하한 1이 걸린다**(살아있던 경우에 한해). 최대 체력이 줄면 그 감소분이 현재 체력에 반영되는데, 0까지 떨어지면 사망 판정이 `TakeDamage` 안에만 있어서 **죽지는 않고 `IsDead()`만 true가 되는 좀비 상태**가 된다. "최대 체력 -20%, 공격력 +30%" 같은 리스크/리턴 카드를 체력 낮을 때 고르면 실제로 밟는 경로다. **스탯 변화는 데미지가 아니므로 죽이지 않는다** — 죽는 건 `TakeDamage`만 시킨다.
+
+> `RecalculateStats`가 실효값을 쓰는 **유일한 지점**이라는 게 이 구조의 전부다. `CurrentCharacterStat`이나 `MaxHP`/`Defense`/`CritChance`/`CritMultiplier`/`MaxWalkSpeed`에 다른 곳에서 직접 대입하면 그 순간 보너스가 조용히 사라진다.
+
+**개발용 콘솔 명령**: `GJAddBonus <스탯이름> <가산> <증가율>` (예: `GJAddBonus MaxHP 5 0`, `GJAddBonus BaseAttackPower 0 0.15`). 카드 없이 보너스를 시험한다. 이름이 틀리면 사용 가능한 목록을 경고로 찍는다. `UFUNCTION(Exec)`이라 플레이어가 조종 중인 폰에서만 먹는다.
+
+**보너스도 런마다 초기화된다.** 캐릭터가 새로 스폰되면서 `StatBonus`가 기본 생성되므로 초기화 코드가 없다. EXP와 같은 메커니즘이다.
 
 **무기 장착 / 스왑 (2슬롯 듀얼 웰드)**
 
@@ -464,6 +482,12 @@ BT 트리 구조 자체(Selector로 IsInAttackRange 분기해서 MoveTo vs Melee
 | `CritMultiplier` | 2.0 | 치명타 배율 |
 | `ExpReward` | 10 | 이 적을 죽인 플레이어가 얻는 경험치. 적 레벨 등에서 유도하지 않고 적마다 명시 — 유도하면 "좀 더 단단하게" 같은 조정이 성장 속도까지 같이 바꿔버림. `float`인 이유는 비교 대상인 `RequiredEXP`가 `float`이라 파이프라인을 통일하기 위함 |
 
+### `FStatValues` / `FStatModifier` — 데이터 테이블 행 아님 (스탯 보너스용)
+
+`FStatValues`는 `FCharacterStat`과 **같은 9개 필드**(`MaxHP`, `MaxMP`, `BaseAttackPower`, `RequiredEXP`, `Defense`, `MoveSpeed`, `CooldownReduction`, `CritChance`, `CritMultiplier`)를 갖되 **전부 기본값이 0**이다. `FCharacterStat`을 재사용하지 않는 이유가 이것 — 그쪽 기본값이 `MaxHP=100`, `MoveSpeed=600`, `CritMultiplier=2`라서 "보너스 없음"을 표현할 수 없다. 합칠 때 쓰는 `operator+=`는 `GJGameTypes.cpp`에 있다.
+
+`FStatModifier`는 `FStatValues Add`(가산)와 `FStatValues Percent`(증가율) 둘을 담는다. `FTableRowBase`를 상속하지 않으므로 그 자체로는 데이터 테이블 행이 아니지만, `BlueprintType` + `EditAnywhere`로 선언되어 **다른 테이블 행의 필드로 들어갈 수 있다** — M2.6의 `FCardData`가 이걸 품는다.
+
 ### `FItemData` — 예: `DT_ItemData` (행 이름 = 아이템 ID)
 | 필드 | 기본값 | 설명 |
 |---|---|---|
@@ -496,12 +520,13 @@ BT 트리 구조 자체(Selector로 IsInAttackRange 분기해서 MoveTo vs Melee
 - 런은 **사망으로만** 끝남 — 클리어(승리) 조건이 없음 (M5)
 - 허브에는 런 시작 포탈 하나뿐 — 상점/영구 강화 미구현 (M6)
 - `FCharacterStat.CooldownReduction`은 필드만 있고 어디에도 연결되지 않음 — 적용 대상이 될 스킬 시스템이 아직 없음
-- **스탯 보너스(base+bonus) 레이어가 없음** — `UpdateCharacterStat`이 테이블 값으로 스탯을 통째로 덮어쓰기 때문에, 카드/버프가 더한 가산치는 다음 레벨업에서 지워진다. 카드 시스템(레벨업 선택지)의 **선행 조건**이며, 카드를 만들기 전에 넣어야 한다(2.2절 경고 참고)
 - 레벨업 시 선택지(카드 3장)가 없음 — `AGJCharacter::OnLevelUp` 델리게이트만 준비돼 있고 구독자가 없음. 스테이지 클리어 쪽 트리거는 진행 구조(M5)가 생긴 뒤에 별도로 필요
 - 액티브 스킬 개념이 없음 — 파이어볼 같은 능력 카드를 붙이려면 스킬 슬롯/쿨다운/MP 소모/입력 바인딩이 전부 새로 필요하다. 발사체(`AGJProjectile` 풀)는 재사용 가능
 - 레벨업/경험치 획득 연출(팝업, 사운드, 파티클)이 없음 — 현재는 HUD 바와 `UE_LOG`뿐
 - `DT_CharacterStat`의 레벨 2~5 성장 곡선은 **임시 테스트 값** — 실제 밸런싱은 스테이지 진행(M5)이 생긴 뒤에 해야 의미가 있음
 - `WBP_PlayerHUD`의 초상화(`PortraitImage`)는 `T_UE_Logo_M` 자리표시자 — 실제 캐릭터 일러스트로 교체 필요
+- 모디파이어 개별 제거/시간제 버프가 없음 — `StatBonus`는 누적만 한다. 10초짜리 이동속도 버프나 무기 장착 중에만 붙는 스탯이 필요해지면 `TArray<FStatModifier>` + 핸들 방식으로 바꿔야 하며, 그때도 `RecalculateStats`만 고치면 되고 실효값을 읽는 코드는 안 바뀐다
+- 적에게는 스탯 보너스가 없음 — `ApplyEnemyStat`이 테이블 값을 멤버에 직접 대입한다. 스테이지가 올라갈수록 적이 강해지는 스케일링(M5)이 필요해지면 같은 구조체를 재사용하면 된다
 - 치명타가 터져도 화면에 표시되지 않음 — 치명타 여부가 공격자 쪽에만 있어서, UI를 붙이려면 커스텀 `FDamageEvent`가 필요
 
 ---
@@ -514,4 +539,5 @@ BT 트리 구조 자체(Selector로 IsInAttackRange 분기해서 MoveTo vs Melee
 - PCH 생성 중 `C1076`/`C3859` 에러는 그 순간 시스템 메모리 부족 때문(코드 문제 아님) — 메모리 여유 있는 상태에서 재시도
 - UMG 위젯 트리/그래프를 MCP로 직접 조작할 때 자주 걸리는 함정은 7절 마지막 노트 참고
 - **데이터 테이블은 `Data/*.csv`가 소스**다. 엑셀에서 CSV를 고치고 → 에셋 우클릭 **Reimport** → **Ctrl+S** → CSV와 `.uasset`을 **함께 커밋**한다(게임이 읽는 건 `.uasset`이라 CSV만 커밋하면 값이 안 바뀐 채로 남는다). 주의점 둘: **리임포트는 전체 교체**라 CSV에 빠진 열은 구조체 기본값으로 리셋되므로 항상 전체 열을 쓸 것, 그리고 에디터에서 직접 만든 테이블은 소스 파일 기록이 없어 **Reimport가 비활성**이다 — CSV를 콘텐츠 브라우저로 **드래그해서 덮어쓰기 임포트**를 한 번 해야 경로가 기록되면서 활성화된다(Export만으로는 연결이 생기지 않는다)
+- 스탯 밸런싱은 콘솔 명령 `GJAddBonus <스탯이름> <가산> <증가율>`로 카드 없이 시험할 수 있다. `UFUNCTION(Exec)`이라 플레이어가 조종 중인 폰에서만 먹는다. **PIE에서 `~` 키는 디버그 매니저가 가로채므로**(`DebugManager.CycleToPreviousColumn`이 대신 실행됨) **에디터 Output Log 창 아래쪽 `Cmd:` 입력칸**에 치는 쪽이 확실하다. 여러 명령을 한 번에 붙여넣으면 하나로 합쳐져 첫 줄만 실행되니 한 줄씩 넣을 것
 - **MCP 서버 포트는 8123**이다(`EditorPerProjectUserSettings.ini`의 `[/Script/ModelContextProtocolEngine.ModelContextProtocolSettings] ServerPortNumber`, `.mcp.json`과 짝을 맞춰야 함). 기본값 8000은 **Incredibuild Manager 서비스가 선점**하고 있어서 언리얼 MCP 서버가 바인딩에 실패한다 — 이때 로그에는 "Starting MCP server on port 8000"만 찍히고 실패가 안 남아서, 클라이언트 쪽에서는 원인 불명의 `ECONNRESET`으로만 보인다

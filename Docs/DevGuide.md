@@ -129,8 +129,22 @@ UGJCombatStatics (UBlueprintFunctionLibrary) — 데미지 공식 단일 소스
   4. 재장전 몽타주 있으면 재생(끝나면 `OnMontageEndedEvent`→`CompleteReload`), 없으면 `ReloadTime` 타이머로 대체
 - `CompleteReload()` — 무기의 `FinishReload()` 호출 + 상태를 `Idle`로 복귀
 
-**스탯 / 레벨**
-- `UpdateCharacterStat(NewLevel)` — `DT_CharacterStat`에서 레벨(행 이름) 조회 → `MaxHP/CurrentHP`, `MaxMP/CurrentMP` 갱신 → `UpdatePlayerHUD()` 호출
+**스탯 / 레벨 / 경험치**
+
+| 함수/멤버 | 설명 |
+|---|---|
+| `UpdateCharacterStat(NewLevel, bRestoreToFull=true)` | `DT_CharacterStat`에서 레벨(행 이름) 조회 → `MaxHP`/`MaxMP`, 방어력/치명타/이동속도 갱신 → `UpdatePlayerHUD()` 호출. **`bRestoreToFull=true`면 HP/MP를 가득 채우고**(스폰/리스폰), **`false`면 최대치 증가분만 현재값에 더한다**(레벨업). 기본값이 `true`라 기존 호출부는 동작이 안 바뀜 |
+| `AddEXP(Amount)` | 경험치 누적 입구. `float`이며 적 처치 외 다른 소스가 생겨도 여기를 쓴다. 내부 `while` 루프라 **한 번의 호출로 여러 레벨**이 오를 수 있고 초과분은 다음 레벨로 이월됨. `RequiredEXP <= 0`인 행이 있어도 무한 루프에 빠지지 않도록 루프 조건에 방어가 들어있음 |
+| `LevelUp()` | `UpdateCharacterStat(CurrentLevel+1, false)` 호출 + `UE_LOG` + `OnLevelUp` 브로드캐스트. `AddEXP` 내부에서만 호출됨 |
+| `IsMaxLevel()` | `DT_CharacterStat`에 **다음 레벨 행이 없으면 만렙**. 상한 상수가 코드에 없으므로 **테이블에 행을 추가하면 코드 수정 없이 만렙이 늘어남**. `FindRow`의 `bWarnIfRowMissing`에 `false`를 넘김 — 여기서 행이 없는 건 오류가 아니라 정상 결과라 경고를 쌓으면 안 되기 때문 |
+| `CurrentEXP` | **누적 총량이 아니라 "이번 레벨의 진행도".** 레벨업 시 `RequiredEXP`만큼 빼고 이월. 만렙에 도달하면 `RequiredEXP` 값으로 고정되어 바가 가득 찬 상태로 표시됨 |
+| `OnLevelUp` | `BlueprintAssignable`, `(int32 NewLevel)`. **아직 구독자 없음** — 레벨업 시 카드 3장을 띄우는 선택 시스템이 붙을 자리 |
+
+**경험치는 런마다 초기화된다.** 죽으면 레벨이 리로드되면서 캐릭터가 새로 스폰되고 `BeginPlay`가 `CurrentLevel=1`로 시작하므로, 초기화 코드가 따로 없다. 회차를 넘어 남는 성장은 이 시스템이 아니라 **M6 영구 특성**(별도 재화 + 별도 저장소)이 담당하며, 그래서 `CurrentEXP`/`CurrentLevel`은 **어떤 세이브 경로에도 들어가지 않는다.**
+
+**레벨업은 회복이 아니다.** 최대치가 오른 만큼만 현재 HP/MP에 더해진다(체력 30/100 → 최대 120이 되면 50/120). 풀 회복시키면 "위험할 때 잡몹 하나 잡기"가 최고의 회복 수단이 되어 체력 관리 긴장이 사라진다.
+
+> ⚠️ **카드 시스템(스탯 증가 카드)을 붙이기 전에 base+bonus 레이어가 필요하다.** 지금 `UpdateCharacterStat`은 `CurrentCharacterStat = *RowData`로 구조체를 통째로 덮어쓰고 `MaxHP`/`Defense`/`CritChance`/`MoveSpeed`를 테이블 값으로 재대입한다. 카드가 "+5 최대 체력"을 더해도 **다음 레벨업에서 지워진다.** 카드를 주는 시점이 레벨업이라 이 충돌은 반드시 발생한다. `GetBaseAttackPower()`도 `CurrentCharacterStat`을 직접 읽어 보너스가 안 실린다.
 
 **무기 장착 / 스왑 (2슬롯 듀얼 웰드)**
 
@@ -277,6 +291,8 @@ UGJCombatStatics (UBlueprintFunctionLibrary) — 데미지 공식 단일 소스
 | `FinishReload()` | `CurrentAmmo += PendingRefillAmount` (클램프), `OnAmmoChanged` 브로드캐스트 |
 | `OnAmmoChanged` (델리게이트) | `(int32 CurrentAmmo, int32 MaxAmmo)`. **직접 UI가 바인딩하지 않음** — `AGJCharacter::CommitWeaponSwap`이 구독해서 `OnActiveWeaponAmmoChanged`로 중계함 (2.2/7절 참고) |
 
+> `Fire()`는 풀에서 꺼낸 총알에 **매 발사마다 `SetInstigator(GetInstigator())`를 다시 건다.** 총알 풀은 무기의 `BeginPlay`에서 만들어지는데, 필드에 놓여 있다가 주운 무기는 그 시점에 주인이 없어서 풀 전체가 인스티게이터 `nullptr`로 굳어버린다(`OnPickedUp`의 `SetInstigator`는 **무기 액터에만** 걸린다). 그 상태로는 `AGJProjectile::OnHit`이 넘기는 가해자 컨트롤러가 null이라 **적 처치 경험치가 아무에게도 안 가고**, `OtherActor != GetInstigator()` 자기 피격 방지도 동작하지 않는다. `EquipWeapon()`으로 스폰되는 시작 무기만 우연히 정상이었던 문제다.
+
 ### 4.3 `AGJProjectile` (GJProjectile.h/.cpp)
 
 - `CollisionComp`(Sphere, `BlockAllDynamic` 프로필) + `MeshComp`(Static, 콜리전 없음) + `ProjectileMovement`
@@ -301,7 +317,9 @@ UGJCombatStatics (UBlueprintFunctionLibrary) — 데미지 공식 단일 소스
       = 데미지 x 100/(100 + 방어력)     ← 방어력은 여기 한 곳에서만
   → CurrentHP 차감
   → OnDamaged.Broadcast(경감 후 데미지)   ← UI(체력바/HUD)가 여길 구독
-  → CurrentHP <= 0 이면 HandleDeath()
+  → CurrentHP <= 0 이면
+       LastDamageInstigator = EventInstigator   ← 가해자를 기억(경험치 지급용)
+       HandleDeath()
 ```
 
 **공식이 사는 곳**: `UGJCombatStatics`(`GJCombatStatics.h/.cpp`, `UBlueprintFunctionLibrary`). 공격 계산과 방어 경감이 서로 다른 지점에서 호출되지만 **공식 자체는 이 파일 하나에만** 있다 — 밸런스 조정 시 여기만 보면 된다.
@@ -315,6 +333,8 @@ UGJCombatStatics (UBlueprintFunctionLibrary) — 데미지 공식 단일 소스
 **적은 공격력 배율을 쓰지 않는다** — `EnemyStat.AttackDamage`가 이미 최종 공격력이라 `AttackPower`에 0을 넘긴다. 치명타는 적도 굴린다.
 
 **치명타 여부는 대상에게 전달되지 않는다.** `CalculateOutgoingDamage`가 `bOutWasCritical`을 돌려주지만 공격자 쪽에서만 알 수 있다. 치명타 데미지 폰트 같은 UI를 붙이려면 커스텀 `FDamageEvent`가 필요하다.
+
+**적 처치 경험치는 `TakeDamage`가 기억한 가해자로 지급된다.** `HandleDeath()`에는 가해자 정보가 전혀 없어서(인자도 없고 멤버로도 안 남음), `AGJBaseCharacter::TakeDamage`가 사망이 확정되는 시점에 `LastDamageInstigator`(`TWeakObjectPtr<AController>`)로 기억해 둔다. `AGJEnemyCharacter::HandleDeath()`가 이걸 읽어 `GetPawn()` → `AGJCharacter` 캐스팅에 성공하면 `AddEXP(ExpReward)`를 호출한다. 약참조인 이유는 적이 죽고 `DestroyDelay`(기본 2초) 뒤에 파괴되므로 그 사이 컨트롤러가 먼저 사라질 수 있기 때문이다. 캐스팅이 실패하면(적끼리 죽임, 환경 사망) 아무에게도 주지 않는다 — 여기서는 "받을 사람이 없다"가 정답이다.
 
 - **원거리 투사체만** 데미지를 줌. 근접 콤보(`Attack1`/`Attack2`... 몽타주 섹션)는 아직 히트 판정(트레이스/콜리전)이 전혀 없음
 - `AnimNotify_GameplayEvent`에 `EGameplayNotifyType::MeleeHit` 케이스가 있지만 스텁 상태(`// Character->PerformMeleeHit();`)이고, 이 노티파이는 `AGJCharacter`로만 캐스트하므로 지금 붙여도 적한텐 안 먹음
@@ -382,9 +402,13 @@ BT 트리 구조 자체(Selector로 IsInAttackRange 분기해서 MoveTo vs Melee
 | 클래스 | 파생 WBP | BindWidget 이름 | 갱신 함수 | 위치/방식 |
 |---|---|---|---|---|
 | `UGJHealthBarWidget` | `WBP_EnemyHealthBar` | `HealthProgressBar` | `UpdateHealth(Current, Max)` | 적 머리 위, `UWidgetComponent` (Screen space) |
-| `UGJPlayerHUDWidget` | `WBP_PlayerHUD` | `HPBar`, `MPBar` | `UpdateHP(Current,Max)` / `UpdateMP(Current,Max)` | 좌상단, `AddToViewport()` |
+| `UGJPlayerHUDWidget` | `WBP_PlayerHUD` | `HPBar`, `MPBar` (strict) / `EXPBar`, `LevelText` (**Optional**) | `UpdateHP(Current,Max)` / `UpdateMP(Current,Max)` / `UpdateEXP(Current,Required,Level)` | 좌상단, `AddToViewport()` |
 
 인벤토리/무기 페이지 UI(`UGJInventoryWidget`, `UGJInventorySlotWidget`, `UGJWeaponSlotWidget`)는 3.2절 참고. 게임오버 화면(`UGJGameOverWidget` → `WBP_GameOver`, `BindWidget: ReturnToHubButton` / `BindWidgetOptional: RunCountText`)은 6.5절 참고 — 이것도 동일한 C++ 베이스 + `BindWidget` 패턴이다.
+
+`EXPBar`/`LevelText`가 strict `BindWidget`이 아니라 **`BindWidgetOptional`인 이유**: strict로 두면 C++이 먼저 들어간 순간 `WBP_PlayerHUD` 컴파일이 깨져서, 에디터에서 위젯을 배치하기 전까지 게임이 정상 동작하지 않는다. 이 프로젝트는 C++ 변경과 에디터 작업이 항상 시차를 두고 일어나므로 새로 추가하는 바인딩은 Optional이 안전하다.
+
+`WBP_PlayerHUD`의 현재 구조는 `RootCanvas > StatusRow(HorizontalBox)` 아래 왼쪽 `PortraitBox`(초상화 `PortraitImage` + `LevelText`), 오른쪽 `StatusBox`(HP/MP/EXP 바, `SizeRule=Fill`)다. 초상화는 아직 아트가 없어 `T_UE_Logo_M`을 자리표시자로 물려 뒀다 — `PortraitImage`는 `bIsVariable=true`라 나중에 런타임 교체도 가능하다.
 
 `WBP_AmmoUI`는 위 두 개와 달리 **자체 이벤트 그래프**로 동작함(값 갱신 함수는 C++이 아니라 BP `UpdateAmmoText(CurrentAmmo, MaxAmmo)` 함수). Construct 시점에 `GetOwningPlayerPawn()`→`AGJCharacter`로 캐스트한 뒤 **`AGJCharacter::OnActiveWeaponAmmoChanged`를 구독**하고 초기값을 한 번 그려줌. 예전에는 그 시점의 `EquippedWeapon`을 직접 캐스팅해서 `AGJWeapon_Ranged::OnAmmoChanged`에 바인딩하는 방식이었는데, 그러면 무기를 스왑해도 재바인딩이 안 돼서 탄약 표시가 예전 무기 것에 고정되는 버그가 있었음 — 캐릭터 델리게이트로 옮기면서 해결(2.2절 "무기 장착/스왑" 참고).
 
@@ -403,7 +427,7 @@ BT 트리 구조 자체(Selector로 IsInAttackRange 분기해서 MoveTo vs Melee
 | `MaxHP` | 100 | |
 | `MaxMP` | 50 | 재장전 시 소모됨 |
 | `BaseAttackPower` | 10 | 무기 데미지에 배율로 적용됨 (`무기데미지 x (1 + 공격력/100)`) |
-| `RequiredEXP` | 100 | |
+| `RequiredEXP` | 100 | **이 레벨에서 다음 레벨까지 필요한 경험치**(누적 총량 아님). 레벨업 시 이 값을 빼고 초과분을 이월. **마지막 행이 곧 레벨 상한** — 행을 추가하면 코드 수정 없이 만렙이 늘어남 |
 | `Defense` | 0 | 받는 데미지 경감 (체감형, 100이면 50% 경감) |
 | `MoveSpeed` | 600 | `CharacterMovement.MaxWalkSpeed`에 적용. 이전에는 설정하지 않아 엔진 기본값을 쓰고 있었음 |
 | `CooldownReduction` | 0 | **미사용** — 스킬 시스템 전까지 연결되지 않음 |
@@ -438,6 +462,7 @@ BT 트리 구조 자체(Selector로 IsInAttackRange 분기해서 MoveTo vs Melee
 | `Defense` | 0 | 받는 데미지 경감 (체감형) |
 | `CritChance` | 0 | 치명타 확률 (0.0~1.0) |
 | `CritMultiplier` | 2.0 | 치명타 배율 |
+| `ExpReward` | 10 | 이 적을 죽인 플레이어가 얻는 경험치. 적 레벨 등에서 유도하지 않고 적마다 명시 — 유도하면 "좀 더 단단하게" 같은 조정이 성장 속도까지 같이 바꿔버림. `float`인 이유는 비교 대상인 `RequiredEXP`가 `float`이라 파이프라인을 통일하기 위함 |
 
 ### `FItemData` — 예: `DT_ItemData` (행 이름 = 아이템 ID)
 | 필드 | 기본값 | 설명 |
@@ -470,8 +495,13 @@ BT 트리 구조 자체(Selector로 IsInAttackRange 분기해서 MoveTo vs Melee
 - `RebirthCount`는 누적 도전 횟수로 설계되었으나 세이브가 없어 앱 종료 시 0으로 돌아감 (M4에서 해결 예정)
 - 런은 **사망으로만** 끝남 — 클리어(승리) 조건이 없음 (M5)
 - 허브에는 런 시작 포탈 하나뿐 — 상점/영구 강화 미구현 (M6)
-- `RequiredEXP`는 데이터 테이블에만 있고 코드에서 한 번도 안 읽힘 — EXP/레벨업 자체가 없어서 `UpdateCharacterStat`은 BeginPlay에서 레벨 1로 한 번만 호출됨 (M2)
 - `FCharacterStat.CooldownReduction`은 필드만 있고 어디에도 연결되지 않음 — 적용 대상이 될 스킬 시스템이 아직 없음
+- **스탯 보너스(base+bonus) 레이어가 없음** — `UpdateCharacterStat`이 테이블 값으로 스탯을 통째로 덮어쓰기 때문에, 카드/버프가 더한 가산치는 다음 레벨업에서 지워진다. 카드 시스템(레벨업 선택지)의 **선행 조건**이며, 카드를 만들기 전에 넣어야 한다(2.2절 경고 참고)
+- 레벨업 시 선택지(카드 3장)가 없음 — `AGJCharacter::OnLevelUp` 델리게이트만 준비돼 있고 구독자가 없음. 스테이지 클리어 쪽 트리거는 진행 구조(M5)가 생긴 뒤에 별도로 필요
+- 액티브 스킬 개념이 없음 — 파이어볼 같은 능력 카드를 붙이려면 스킬 슬롯/쿨다운/MP 소모/입력 바인딩이 전부 새로 필요하다. 발사체(`AGJProjectile` 풀)는 재사용 가능
+- 레벨업/경험치 획득 연출(팝업, 사운드, 파티클)이 없음 — 현재는 HUD 바와 `UE_LOG`뿐
+- `DT_CharacterStat`의 레벨 2~5 성장 곡선은 **임시 테스트 값** — 실제 밸런싱은 스테이지 진행(M5)이 생긴 뒤에 해야 의미가 있음
+- `WBP_PlayerHUD`의 초상화(`PortraitImage`)는 `T_UE_Logo_M` 자리표시자 — 실제 캐릭터 일러스트로 교체 필요
 - 치명타가 터져도 화면에 표시되지 않음 — 치명타 여부가 공격자 쪽에만 있어서, UI를 붙이려면 커스텀 `FDamageEvent`가 필요
 
 ---
@@ -483,3 +513,5 @@ BT 트리 구조 자체(Selector로 IsInAttackRange 분기해서 MoveTo vs Melee
 - USTRUCT 레이아웃 변경(필드 추가/이름 변경)을 라이브 코딩으로 여러 번 하면, 그 구조체를 참조하는 UMG 블루프린트 그래프(`Break WeaponStat` 등)의 핀 타입이 깨질 수 있음 → 증상: "정확히 일치하는 구조체만 호환" 컴파일 에러 → **에디터 완전 재시작**(재빌드 불필요, 껐다 켜기만)으로 대부분 해결됨
 - PCH 생성 중 `C1076`/`C3859` 에러는 그 순간 시스템 메모리 부족 때문(코드 문제 아님) — 메모리 여유 있는 상태에서 재시도
 - UMG 위젯 트리/그래프를 MCP로 직접 조작할 때 자주 걸리는 함정은 7절 마지막 노트 참고
+- **데이터 테이블은 `Data/*.csv`가 소스**다. 엑셀에서 CSV를 고치고 → 에셋 우클릭 **Reimport** → **Ctrl+S** → CSV와 `.uasset`을 **함께 커밋**한다(게임이 읽는 건 `.uasset`이라 CSV만 커밋하면 값이 안 바뀐 채로 남는다). 주의점 둘: **리임포트는 전체 교체**라 CSV에 빠진 열은 구조체 기본값으로 리셋되므로 항상 전체 열을 쓸 것, 그리고 에디터에서 직접 만든 테이블은 소스 파일 기록이 없어 **Reimport가 비활성**이다 — CSV를 콘텐츠 브라우저로 **드래그해서 덮어쓰기 임포트**를 한 번 해야 경로가 기록되면서 활성화된다(Export만으로는 연결이 생기지 않는다)
+- **MCP 서버 포트는 8123**이다(`EditorPerProjectUserSettings.ini`의 `[/Script/ModelContextProtocolEngine.ModelContextProtocolSettings] ServerPortNumber`, `.mcp.json`과 짝을 맞춰야 함). 기본값 8000은 **Incredibuild Manager 서비스가 선점**하고 있어서 언리얼 MCP 서버가 바인딩에 실패한다 — 이때 로그에는 "Starting MCP server on port 8000"만 찍히고 실패가 안 남아서, 클라이언트 쪽에서는 원인 불명의 `ECONNRESET`으로만 보인다

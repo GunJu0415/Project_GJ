@@ -849,9 +849,16 @@ void AGJCharacter::RecalculateStats(bool bRestoreToFull)
     // 최대치가 오른 만큼만 현재값에 더한다(bRestoreToFull=false).
     // 레벨업과 "+5 최대 체력" 카드가 같은 이 한 줄을 지나므로, 카드가 현재 체력도 함께
     // 올려주는 동작이 따로 짤 것 없이 나온다.
+    //
+    // 하한이 0이 아니라 1인 이유: 스탯 변화는 데미지가 아니다. "최대 체력 -20%, 공격력 +30%"
+    // 같은 리스크/리턴 카드를 체력이 낮을 때 고르면 현재 체력이 0으로 떨어지는데, 사망 판정은
+    // TakeDamage 안에만 있어서 죽지는 않고 IsDead()만 true가 되는 좀비 상태가 된다.
+    // 카드 한 장에 즉사하지도, 살아있는데 죽은 것으로 보이지도 않게 최소 1을 남긴다.
+    // 이미 죽어있었다면 0을 유지해야 하므로 그때만 하한이 0이다.
     const float OldMaxHP = MaxHP;
     MaxHP = S.MaxHP;
-    CurrentHP = bRestoreToFull ? MaxHP : FMath::Clamp(CurrentHP + (MaxHP - OldMaxHP), 0.f, MaxHP);
+    const float MinHP = (CurrentHP > 0.f) ? 1.f : 0.f;
+    CurrentHP = bRestoreToFull ? MaxHP : FMath::Clamp(CurrentHP + (MaxHP - OldMaxHP), MinHP, MaxHP);
 
     const float OldMaxMP = MaxMP;
     MaxMP = S.MaxMP;
@@ -929,6 +936,65 @@ void AGJCharacter::LevelUp()
 
     // 아직 구독자가 없다. 레벨업 시 카드 3장을 띄우는 선택 시스템이 여기에 붙는다.
     OnLevelUp.Broadcast(CurrentLevel);
+}
+
+void AGJCharacter::AddStatBonus(const FStatModifier& Delta)
+{
+    StatBonus.Add += Delta.Add;
+    StatBonus.Percent += Delta.Percent;
+
+    // 카드는 회복이 아니다 - 최대치 증가분만 현재 HP/MP에 반영된다.
+    // ("+5 최대 체력" 카드가 현재 체력도 +5 시키는 건 RecalculateStats가 처리한다)
+    RecalculateStats(/*bRestoreToFull=*/false);
+}
+
+void AGJCharacter::GJAddBonus(const FString& StatName, float AddValue, float PercentValue)
+{
+    FStatModifier Delta;
+
+    // 스탯 이름을 해당 필드로 매핑한다. 대소문자는 구분하지 않는다.
+    // 포인터-투-멤버를 쓰면 Add와 Percent 양쪽에 같은 필드를 지정하는 걸 한 줄로 쓸 수 있다.
+    auto TryApply = [&](const TCHAR* Name, float FStatValues::* Member) -> bool
+    {
+        if (!StatName.Equals(Name, ESearchCase::IgnoreCase))
+        {
+            return false;
+        }
+        Delta.Add.*Member = AddValue;
+        Delta.Percent.*Member = PercentValue;
+        return true;
+    };
+
+    // 스탯이 늘어나면 여기에도 한 줄 추가해야 한다. 컴파일러가 안 잡아주는 지점이다.
+    const bool bMatched =
+        TryApply(TEXT("MaxHP"),             &FStatValues::MaxHP)             ||
+        TryApply(TEXT("MaxMP"),             &FStatValues::MaxMP)             ||
+        TryApply(TEXT("BaseAttackPower"),   &FStatValues::BaseAttackPower)   ||
+        TryApply(TEXT("RequiredEXP"),       &FStatValues::RequiredEXP)       ||
+        TryApply(TEXT("Defense"),           &FStatValues::Defense)           ||
+        TryApply(TEXT("MoveSpeed"),         &FStatValues::MoveSpeed)         ||
+        TryApply(TEXT("CooldownReduction"), &FStatValues::CooldownReduction) ||
+        TryApply(TEXT("CritChance"),        &FStatValues::CritChance)        ||
+        TryApply(TEXT("CritMultiplier"),    &FStatValues::CritMultiplier);
+
+    if (!bMatched)
+    {
+        // 조용히 무시하면 오타를 쳤을 때 "보너스가 안 먹네"로 오인해서 없는 버그를 쫓게 된다.
+        UE_LOG(LogTemp, Warning,
+            TEXT("GJAddBonus: 알 수 없는 스탯 '%s'. 사용 가능: MaxHP, MaxMP, BaseAttackPower, RequiredEXP, Defense, MoveSpeed, CooldownReduction, CritChance, CritMultiplier"),
+            *StatName);
+        return;
+    }
+
+    AddStatBonus(Delta);
+
+    UE_LOG(LogTemp, Log,
+        TEXT("GJAddBonus: %s (가산 %.2f, 증가율 %.0f%%) -> HP=%.0f/%.0f, 공격력=%.1f, 방어력=%.1f, 치명타=%.2f/x%.2f, 이동속도=%.0f, RequiredEXP=%.0f"),
+        *StatName, AddValue, PercentValue * 100.f,
+        CurrentHP, MaxHP,
+        CurrentCharacterStat.BaseAttackPower, Defense,
+        CritChance, CritMultiplier,
+        CurrentCharacterStat.MoveSpeed, CurrentCharacterStat.RequiredEXP);
 }
 
 void AGJCharacter::ApplyConsumableEffect(float HealAmount, float ManaAmount)

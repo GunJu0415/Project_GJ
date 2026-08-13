@@ -283,6 +283,19 @@ public:
     UPROPERTY(BlueprintAssignable, Category = "Level")
     FOnLevelUpSignature OnLevelUp;
 
+    // 카드/버프가 준 스탯 보너스를 누적한다. 개별 제거는 지원하지 않는다 - 런마다 캐릭터가
+    // 새로 스폰되면서 StatBonus가 기본 생성되므로 초기화가 필요 없기 때문이다. 나중에
+    // 시간제 버프가 필요해지면 목록 기반으로 바꾸되, 그때도 실효값을 읽는 코드는 안 바뀐다.
+    UFUNCTION(BlueprintCallable, Category = "Stat")
+    void AddStatBonus(const FStatModifier& Delta);
+
+    // 개발용 콘솔 명령. 카드 시스템 없이 보너스를 시험한다.
+    // 예) GJAddBonus MaxHP 5 0              -> 최대 체력 +5
+    //     GJAddBonus BaseAttackPower 0 0.15 -> 공격력 +15%
+    // 카드가 생긴 뒤에도 "이 조합이면 어떻게 되나"를 카드 없이 시험할 수 있어 남겨둔다.
+    UFUNCTION(Exec)
+    void GJAddBonus(const FString& StatName, float AddValue, float PercentValue);
+
 protected:
 
     UPROPERTY(EditDefaultsOnly, Category = "Weapon")

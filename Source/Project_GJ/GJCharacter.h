@@ -21,6 +21,7 @@ class UCharacterStateComponent;
 class UUserWidget;
 class UGJPlayerHUDWidget;
 class UGJInventoryComponent;
+class UGJCardComponent;
 class UGJInventoryWidget;
 
 enum class EDodgeType
@@ -296,6 +297,18 @@ public:
     UFUNCTION(Exec)
     void GJAddBonus(const FString& StatName, float AddValue, float PercentValue);
 
+    // 아래 두 개는 CardComponent로 그대로 넘기기만 한다.
+    // 컴포넌트에 UFUNCTION(Exec)를 달아도 콘솔이 못 찾는다 - 명령 라우팅이 폰까지만 내려오고
+    // 소유 컴포넌트까지는 안 들어가는 경우가 있어서, 폰에 창구를 만들어 준다.
+    // 예) GJDrawCards                  -> 지금 풀에서 뽑히는 카드를 로그로 출력
+    UFUNCTION(Exec)
+    void GJDrawCards();
+
+    // 예) GJSetTagWeight Tree.Offense 5 -> 공격 트리 카드가 5배 잘 나오게
+    //     GJSetTagWeight Tree.Offense 1 -> 원래대로
+    UFUNCTION(Exec)
+    void GJSetTagWeight(const FString& TagName, float Multiplier);
+
 protected:
 
     UPROPERTY(EditDefaultsOnly, Category = "Weapon")
@@ -406,6 +419,10 @@ protected:
     // 인벤토리 데이터/로직 (버튼 등은 이 컴포넌트에 직접 연결해서 쓰면 됨)
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Inventory")
     UGJInventoryComponent* InventoryComponent;
+
+    // 레벨업 카드 선택 (OnLevelUp을 구독해서 알아서 동작함 - 캐릭터는 카드를 모른다)
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Card")
+    UGJCardComponent* CardComponent;
 
     // 인벤토리 그리드 UI. BP_GJCharacter 디테일 패널에서 WBP_Inventory 같은 위젯 블루프린트를 할당해야 함
     UPROPERTY(EditDefaultsOnly, Category = "Inventory")

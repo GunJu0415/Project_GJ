@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "Engine/DataTable.h"
+#include "GameplayTagContainer.h"
 #include "GJGameTypes.generated.h" // 이름 맞춰주기
 
 // FCardData가 TSubclassOf로만 참조하므로 전방 선언으로 충분하다.
@@ -160,6 +161,14 @@ struct FCardData : public FTableRowBase
     // EffectType == GrantWeapon일 때만 쓰인다
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Card")
     TSubclassOf<AGJWeaponBase> WeaponClass;
+
+    // 이 카드가 속한 트리/계열 (예: Tree.Fire, Weapon.Gun). 여러 개 달아도 된다.
+    // 플레이어가 타고 있는 트리의 카드가 더 자주 뜨게 하는 데 쓰인다
+    // (UGJCardComponent::TagWeightMultipliers).
+    // FName이 아니라 게임플레이 태그인 이유는 계층 때문이다 - Tree.Fire 배율 하나가
+    // Tree.Fire.Shotgun 카드까지 자동으로 밀어준다.
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Card")
+    FGameplayTagContainer CardTags;
 
     // false면 한 번 고른 뒤 풀에서 영구 제외된다(무기나 고유 효과용).
     // true면 여러 번 등장할 수 있어 "같은 카드를 쌓아 빌드를 밀어붙이는" 플레이가 가능하다.

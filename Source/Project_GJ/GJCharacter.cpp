@@ -15,6 +15,7 @@
 #include "Blueprint/UserWidget.h"
 #include "GJPlayerHUDWidget.h"
 #include "GJInventoryComponent.h"
+#include "GJCardComponent.h"
 #include "GJInteractable.h"
 #include "GJInventoryWidget.h"
 #include "Kismet/GameplayStatics.h"
@@ -43,6 +44,7 @@ AGJCharacter::AGJCharacter()
     TopDownCameraComponent->bUsePawnControlRotation = false;
 
     InventoryComponent = CreateDefaultSubobject<UGJInventoryComponent>(TEXT("InventoryComponent"));
+    CardComponent = CreateDefaultSubobject<UGJCardComponent>(TEXT("CardComponent"));
 
     // 무기 슬롯 2칸(0번/1번) - 처음엔 둘 다 빈 슬롯
     WeaponSlots.Init(nullptr, 2);
@@ -946,6 +948,40 @@ void AGJCharacter::AddStatBonus(const FStatModifier& Delta)
     // 카드는 회복이 아니다 - 최대치 증가분만 현재 HP/MP에 반영된다.
     // ("+5 최대 체력" 카드가 현재 체력도 +5 시키는 건 RecalculateStats가 처리한다)
     RecalculateStats(/*bRestoreToFull=*/false);
+}
+
+void AGJCharacter::GJDrawCards()
+{
+    if (!CardComponent)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("GJDrawCards: CardComponent가 없습니다."));
+        return;
+    }
+
+    CardComponent->GJDrawCards();
+}
+
+void AGJCharacter::GJSetTagWeight(const FString& TagName, float Multiplier)
+{
+    if (!CardComponent)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("GJSetTagWeight: CardComponent가 없습니다."));
+        return;
+    }
+
+    // 두 번째 인자가 false면 등록되지 않은 태그일 때 경고 없이 빈 태그를 돌려준다.
+    // 오타를 조용히 넘기지 않으려고 직접 확인하고 메시지를 찍는다.
+    const FGameplayTag Tag = FGameplayTag::RequestGameplayTag(FName(*TagName), false);
+    if (!Tag.IsValid())
+    {
+        UE_LOG(LogTemp, Warning,
+            TEXT("GJSetTagWeight: '%s'는 등록된 게임플레이 태그가 아닙니다. Config/DefaultGameplayTags.ini를 확인하세요."),
+            *TagName);
+        return;
+    }
+
+    CardComponent->SetTagWeightMultiplier(Tag, Multiplier);
+    UE_LOG(LogTemp, Log, TEXT("GJSetTagWeight: %s -> x%.2f"), *Tag.ToString(), Multiplier);
 }
 
 void AGJCharacter::GJAddBonus(const FString& StatName, float AddValue, float PercentValue)

@@ -915,8 +915,32 @@ class UGJCardSelectWidget;
 
 ```cpp
     // 개발용. 레벨업 없이 카드 화면만 띄워본다(일시정지는 걸지 않는다 - Task 4에서 붙는다).
+    // Exec를 여기 달면 콘솔이 못 찾는다(Task 2에서 확인됨). AGJCharacter에 창구를 만든다.
+    UFUNCTION(BlueprintCallable, Category = "Card")
+    void GJShowCards();
+```
+
+이어서 `AGJCharacter`에 콘솔 창구를 만든다. `GJCharacter.h`의 `GJSetTagWeight` 선언 아래에 추가한다:
+
+```cpp
+    // 예) GJShowCards -> 레벨업 없이 카드 화면만 띄운다
     UFUNCTION(Exec)
     void GJShowCards();
+```
+
+`GJCharacter.cpp`의 `AGJCharacter::GJSetTagWeight` 구현 아래에 추가한다:
+
+```cpp
+void AGJCharacter::GJShowCards()
+{
+    if (!CardComponent)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("GJShowCards: CardComponent가 없습니다."));
+        return;
+    }
+
+    CardComponent->GJShowCards();
+}
 ```
 
 - [ ] **Step 6: `GJCardComponent.cpp`에 위젯 표시 구현 추가**
@@ -1617,7 +1641,7 @@ EOF
 
 일시정지·입력 모드는 인벤토리 모달과 같은 패턴이다(2.2절 `ToggleInventory` 참고): 열 때 `SetGamePaused(true)` + `FInputModeUIOnly` + `SetWidgetToFocus` + `StopAutoFire()`, 닫을 때 `SetGamePaused(false)` + `FInputModeGameOnly` + `SetConsumeCaptureMouseDown(false)`. 인벤토리와 달리 **닫기 키가 없다** — 반드시 한 장 골라야 넘어간다.
 
-**개발용 콘솔 명령**: `GJDrawCards`(뽑기 결과를 로그로만), `GJShowCards`(레벨업 없이 화면만 띄움). 둘 다 `UGJCardComponent`의 `UFUNCTION(Exec)`이다 — `AActor::ProcessConsoleExec`이 소유 컴포넌트까지 탐색하므로 폰에 붙어 있으면 동작한다.
+**개발용 콘솔 명령**: `GJDrawCards`(뽑기 결과를 로그로만), `GJShowCards`(레벨업 없이 화면만 띄움), `GJSetTagWeight <태그> <배율>`(트리 밀어주기 시험). 셋 다 **`AGJCharacter`의 `UFUNCTION(Exec)`**이고 몸통은 `UGJCardComponent`에 있다 — 컴포넌트에 직접 `Exec`를 달면 콘솔이 `Command not recognized`를 낸다(Task 2에서 확인).
 
 **카드도 런마다 초기화된다.** 컴포넌트가 캐릭터와 함께 새로 만들어지므로 `TakenCards`가 비워진다. EXP·스탯 보너스와 같은 메커니즘이다.
 ```

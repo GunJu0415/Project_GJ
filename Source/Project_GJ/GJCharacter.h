@@ -39,6 +39,10 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnWeaponSlotsChangedSignature);
 // AGJCharacter::CommitWeaponSwap이 알아서 처리함.
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnActiveWeaponAmmoChangedSignature, int32, CurrentAmmo, int32, MaxAmmo);
 
+// 레벨이 오를 때마다 브로드캐스트됨. 지금은 구독자가 없지만, 레벨업 시 카드 3장이 떠서 하나를
+// 고르는 선택 시스템이 붙을 자리다 - 그때 이 델리게이트 하나만 구독하면 된다.
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnLevelUpSignature, int32, NewLevel);
+
 UCLASS()
 class PROJECT_GJ_API AGJCharacter : public AGJBaseCharacter
 {
@@ -218,8 +222,19 @@ protected:
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Character Stat")
     int32 CurrentLevel;
 
+    // 현재 레벨에서 쌓은 경험치. 누적 총량이 아니라 "이번 레벨의 진행도"다 -
+    // 레벨업할 때 CurrentCharacterStat.RequiredEXP만큼 빼고 초과분을 이월한다.
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Level")
+    float CurrentEXP = 0.f;
+
+    // 다음 레벨의 스탯을 적용하고 OnLevelUp을 쏜다. AddEXP 내부에서만 호출된다.
+    void LevelUp();
+
+    // bRestoreToFull=true면 HP/MP를 가득 채운다(스폰/리스폰용, 기존 동작 그대로).
+    // false면 최대치가 오른 만큼만 현재값에 더한다(레벨업용) - 레벨업이 완전 회복 수단이 되면
+    // "위험할 때 잡몹 하나 잡기"가 최고의 회복법이 되어 체력 관리 긴장이 사라진다.
     UFUNCTION(BlueprintCallable, Category = "Character Stat")
-    void UpdateCharacterStat(int32 NewLevel);
+    void UpdateCharacterStat(int32 NewLevel, bool bRestoreToFull = true);
 
 public:
     // 소비 아이템 사용 시 HP/MP 회복 적용 (인벤토리 컴포넌트의 UseItem에서 호출됨)
@@ -229,6 +244,20 @@ public:
     // 무기가 발사 시 공격력 배율을 계산할 때 읽는다 (CurrentCharacterStat이 protected라 getter가 필요함)
     UFUNCTION(BlueprintPure, Category = "Character Stat")
     float GetBaseAttackPower() const { return CurrentCharacterStat.BaseAttackPower; }
+
+    // 경험치를 더한다. 적 처치가 주 경로지만 퀘스트/상자 등 다른 소스가 생겨도 이 입구를 쓴다.
+    // 한 번의 호출로 여러 레벨이 오를 수 있다(초과분은 다음 레벨로 이월됨).
+    UFUNCTION(BlueprintCallable, Category = "Level")
+    void AddEXP(float Amount);
+
+    // DT_CharacterStat에 다음 레벨 행이 없으면 만렙이다. 상한을 코드 상수로 두지 않으므로
+    // 테이블에 행을 추가하는 것만으로 만렙이 늘어난다.
+    UFUNCTION(BlueprintPure, Category = "Level")
+    bool IsMaxLevel() const;
+
+    // 레벨업 시점. 아직 구독자가 없다 - 카드 선택 시스템이 여기 붙는다.
+    UPROPERTY(BlueprintAssignable, Category = "Level")
+    FOnLevelUpSignature OnLevelUp;
 
 protected:
 

@@ -788,7 +788,7 @@ void AGJCharacter::OnMontageEndedEvent(UAnimMontage* Montage, bool bInterrupted)
     }
 }
 
-void AGJCharacter::UpdateCharacterStat(int32 NewLevel)
+void AGJCharacter::UpdateCharacterStat(int32 NewLevel, bool bRestoreToFull)
 {
     CurrentLevel = NewLevel;
     if (CharacterStatTable)
@@ -800,11 +800,16 @@ void AGJCharacter::UpdateCharacterStat(int32 NewLevel)
         {
             CurrentCharacterStat = *RowData;
 
+            // 레벨업 경로(bRestoreToFull=false)에서는 최대치가 오른 만큼만 현재값에 더한다.
+            // 체력 30/100에서 최대 체력이 120이 되면 50/120이 된다 - 성장의 이득은 주되
+            // 위험한 상태는 그대로 유지된다.
+            const float OldMaxHP = MaxHP;
             MaxHP = CurrentCharacterStat.MaxHP;
-            CurrentHP = MaxHP;
+            CurrentHP = bRestoreToFull ? MaxHP : FMath::Clamp(CurrentHP + (MaxHP - OldMaxHP), 0.f, MaxHP);
 
+            const float OldMaxMP = MaxMP;
             MaxMP = CurrentCharacterStat.MaxMP;
-            CurrentMP = MaxMP;
+            CurrentMP = bRestoreToFull ? MaxMP : FMath::Clamp(CurrentMP + (MaxMP - OldMaxMP), 0.f, MaxMP);
 
             // 전투 스탯 - TakeDamage(방어력)와 무기 발사(치명타)가 읽는다
             Defense = CurrentCharacterStat.Defense;
@@ -818,6 +823,70 @@ void AGJCharacter::UpdateCharacterStat(int32 NewLevel)
     }
 
     UpdatePlayerHUD();
+}
+
+bool AGJCharacter::IsMaxLevel() const
+{
+    if (!CharacterStatTable)
+    {
+        // 테이블이 없으면 성장 자체가 불가능하다. 만렙으로 취급해서 AddEXP가 무한 루프에
+        // 빠지지 않게 한다.
+        return true;
+    }
+
+    const FString NextRowName = FString::FromInt(CurrentLevel + 1);
+
+    // 세 번째 인자(bWarnIfRowMissing)에 false를 넘긴다 - 여기서 행이 없는 건 오류가 아니라
+    // "만렙"이라는 정상 결과다. 기본값(true)으로 두면 만렙 도달 후 적을 죽일 때마다 경고가 쌓인다.
+    const FCharacterStat* NextRow = CharacterStatTable->FindRow<FCharacterStat>(
+        FName(*NextRowName), TEXT("IsMaxLevel"), false);
+
+    return NextRow == nullptr;
+}
+
+void AGJCharacter::AddEXP(float Amount)
+{
+    if (Amount <= 0.f || IsMaxLevel())
+    {
+        return;
+    }
+
+    CurrentEXP += Amount;
+
+    // 한 번에 여러 레벨이 오를 수 있다(경험치가 큰 보스 등). 매 반복마다 그 시점 레벨의
+    // RequiredEXP를 빼므로 초과분이 정확히 다음 레벨로 이월된다.
+    // RequiredEXP가 0 이하인 행이 있으면 무한 루프가 되므로 조건에 함께 둔다.
+    while (CurrentCharacterStat.RequiredEXP > 0.f && CurrentEXP >= CurrentCharacterStat.RequiredEXP)
+    {
+        if (IsMaxLevel())
+        {
+            break;
+        }
+
+        CurrentEXP -= CurrentCharacterStat.RequiredEXP;
+        LevelUp();  // 여기서 CurrentCharacterStat이 다음 레벨 값으로 갱신된다
+    }
+
+    if (IsMaxLevel())
+    {
+        // 만렙에서는 더 쌓아둘 곳이 없다. 0으로 두면 경험치 바가 빈 채로 남아서 "아직 더 오를
+        // 수 있다"로 보이므로, 가득 찬 상태로 고정한다.
+        CurrentEXP = CurrentCharacterStat.RequiredEXP;
+    }
+
+    UpdatePlayerHUD();
+}
+
+void AGJCharacter::LevelUp()
+{
+    // 레벨업은 회복이 아니다 - 최대치 증가분만 현재 HP/MP에 반영된다
+    UpdateCharacterStat(CurrentLevel + 1, /*bRestoreToFull=*/false);
+
+    UE_LOG(LogTemp, Log, TEXT("LevelUp! Level=%d, HP=%.0f/%.0f, NextRequiredEXP=%.0f"),
+        CurrentLevel, CurrentHP, MaxHP, CurrentCharacterStat.RequiredEXP);
+
+    // 아직 구독자가 없다. 레벨업 시 카드 3장을 띄우는 선택 시스템이 여기에 붙는다.
+    OnLevelUp.Broadcast(CurrentLevel);
 }
 
 void AGJCharacter::ApplyConsumableEffect(float HealAmount, float ManaAmount)

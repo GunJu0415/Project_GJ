@@ -1,5 +1,6 @@
 #include "GJPlayerHUDWidget.h"
 #include "Components/ProgressBar.h"
+#include "Components/TextBlock.h"
 
 void UGJPlayerHUDWidget::UpdateHP(float CurrentHP, float MaxHP)
 {
@@ -21,4 +22,21 @@ void UGJPlayerHUDWidget::UpdateMP(float CurrentMP, float MaxMP)
 
     const float Percent = (MaxMP > 0.f) ? FMath::Clamp(CurrentMP / MaxMP, 0.f, 1.f) : 0.f;
     MPBar->SetPercent(Percent);
+}
+
+void UGJPlayerHUDWidget::UpdateEXP(float CurrentEXP, float RequiredEXP, int32 Level)
+{
+    if (EXPBar)
+    {
+        // RequiredEXP가 0이면(데이터 미입력 등) 나누기 0이 되므로 가득 찬 것으로 표시한다
+        const float Percent = (RequiredEXP > 0.f)
+            ? FMath::Clamp(CurrentEXP / RequiredEXP, 0.f, 1.f)
+            : 1.f;
+        EXPBar->SetPercent(Percent);
+    }
+
+    if (LevelText)
+    {
+        LevelText->SetText(FText::AsNumber(Level));
+    }
 }

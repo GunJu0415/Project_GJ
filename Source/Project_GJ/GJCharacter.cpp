@@ -910,6 +910,7 @@ void AGJCharacter::UpdatePlayerHUD()
 
     PlayerHUDWidgetInstance->UpdateHP(CurrentHP, MaxHP);
     PlayerHUDWidgetInstance->UpdateMP(CurrentMP, MaxMP);
+    PlayerHUDWidgetInstance->UpdateEXP(CurrentEXP, CurrentCharacterStat.RequiredEXP, CurrentLevel);
 }
 
 void AGJCharacter::EquipWeapon()

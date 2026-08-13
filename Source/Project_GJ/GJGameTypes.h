@@ -154,6 +154,13 @@ struct FEnemyStat : public FTableRowBase
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stat")
     float CritMultiplier = 2.f;
+
+    // 이 적을 죽였을 때 플레이어가 얻는 경험치. 적 레벨 같은 다른 값에서 유도하지 않고
+    // 적마다 명시한다 - 유도하면 "좀 더 단단하게" 같은 밸런스 조정이 성장 속도까지 같이
+    // 바꿔버리고, "체력만 많은 샌드백"이나 "약한데 빠른 견제형" 같은 적을 표현할 수 없다.
+    // float인 이유: 비교 대상인 FCharacterStat::RequiredEXP가 float이라 파이프라인을 통일한다.
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stat")
+    float ExpReward = 10.f;
 };
 
 // -----------------------------------------

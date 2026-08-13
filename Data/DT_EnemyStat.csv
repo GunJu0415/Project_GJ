@@ -1,0 +1,2 @@
+Name,MaxHP,AttackDamage,AttackRange,DetectionRange,AttackCooldown,MoveSpeed,AttackWindup,Defense,CritChance,CritMultiplier,ExpReward
+1,100,10,150,800,1.5,300,0.3,0,0,2,50

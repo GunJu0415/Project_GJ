@@ -65,6 +65,9 @@ float AGJBaseCharacter::TakeDamage(float DamageAmount, FDamageEvent const& Damag
 
     if (CurrentHP <= 0.f)
     {
+        // HandleDeath()는 가해자를 인자로 받지 않으므로, 사망이 확정된 이 시점에 기억해 둔다.
+        // 적 쪽 HandleDeath 오버라이드가 이 값을 읽어 경험치를 지급한다.
+        LastDamageInstigator = EventInstigator;
         HandleDeath();
     }
 

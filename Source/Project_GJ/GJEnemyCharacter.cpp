@@ -11,6 +11,7 @@
 #include "GJCombatStatics.h"
 #include "Components/WidgetComponent.h"
 #include "GJHealthBarWidget.h"
+#include "GJCharacter.h"
 
 AGJEnemyCharacter::AGJEnemyCharacter()
 {
@@ -82,6 +83,10 @@ void AGJEnemyCharacter::ApplyEnemyStat()
     Defense = RowData->Defense;
     CritChance = RowData->CritChance;
     CritMultiplier = RowData->CritMultiplier;
+
+    // HandleDeath에서 다시 데이터 테이블을 조회하지 않도록 여기서 멤버에 복사해 둔다
+    // (다른 스탯들과 동일한 패턴)
+    ExpReward = RowData->ExpReward;
 }
 
 void AGJEnemyCharacter::Tick(float DeltaTime)
@@ -161,6 +166,17 @@ void AGJEnemyCharacter::ApplyAttackDamage()
 void AGJEnemyCharacter::HandleDeath()
 {
     Super::HandleDeath();
+
+    // 죽인 주체에게 경험치를 준다. TakeDamage가 사망 직전에 기억해 둔 가해자 컨트롤러를 쓴다.
+    // 캐스팅이 실패하는 경우(적이 적을 죽임, 환경 사망, 컨트롤러가 이미 파괴됨)에는 아무에게도
+    // 주지 않는다 - 여기서는 "받을 사람이 없다"가 정답이지 오류가 아니다.
+    if (AController* KillerController = LastDamageInstigator.Get())
+    {
+        if (AGJCharacter* KillerCharacter = Cast<AGJCharacter>(KillerController->GetPawn()))
+        {
+            KillerCharacter->AddEXP(ExpReward);
+        }
+    }
 
     // 죽는 순간 대기 중이던 공격 판정이 있다면 취소
     GetWorldTimerManager().ClearTimer(AttackWindupTimerHandle);

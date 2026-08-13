@@ -115,6 +115,13 @@ void AGJWeapon_Ranged::Fire()
     {
         ProjectileToFire->SetActorLocationAndRotation(MuzzleLocation, ShootDirection.Rotation());
 
+        // 총알 풀은 무기의 BeginPlay에서 만들어지는데, 필드에 놓여 있다가 주운 무기는 그 시점에
+        // 주인이 없어서 풀 전체가 인스티게이터 nullptr로 굳어버린다(OnPickedUp의 SetInstigator는
+        // 무기 액터에만 걸린다). 그러면 OnHit이 넘기는 가해자 컨트롤러가 null이 되어 적 처치
+        // 경험치를 줄 대상을 찾지 못하고, 자기 피격 방지도 동작하지 않는다.
+        // 발사 시점에 현재 주인으로 갱신하면 스왑/픽업/드랍 어느 경로든 항상 맞는다.
+        ProjectileToFire->SetInstigator(GetInstigator());
+
         // 무기를 든 캐릭터의 공격력/치명타를 반영해 실제 발사 데미지를 계산한다.
         // OnPickedUp에서 SetInstigator를 하므로 플레이어가 든 무기는 항상 여기서 캐릭터를 찾을 수 있다.
         float AttackPower = 0.f;

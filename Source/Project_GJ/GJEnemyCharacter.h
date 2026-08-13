@@ -70,6 +70,11 @@ protected:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI")
     float AttackWindup = 0.3f;
 
+    // 이 적을 죽인 플레이어에게 주는 경험치
+    // (EnemyDataHandle을 할당하면 FEnemyStat.ExpReward 값으로 덮어써짐)
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI")
+    float ExpReward = 10.f;
+
     // 선딜레이가 끝난 시점에 실제로 데미지를 적용함 (플레이어가 그새 사거리 밖으로 나갔으면 헛스윙 처리)
     void ApplyAttackDamage();
 

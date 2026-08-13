@@ -74,6 +74,14 @@ public:
     FOnDamagedSignature OnDamaged;
 
 protected:
+    // 마지막으로 이 캐릭터에게 데미지를 준 컨트롤러. HandleDeath()에는 가해자 정보가 전혀
+    // 없어서(인자도 없고 멤버로도 안 남음), TakeDamage에서 사망이 확정되는 순간 기억해 둔다.
+    // 적 처치 경험치를 "실제로 죽인 플레이어"에게 주기 위해 필요하다.
+    // 약참조인 이유: 적은 죽고 DestroyDelay(기본 2초) 뒤에 파괴되므로, 그 사이에 가해자
+    // 컨트롤러가 먼저 사라져도 댕글링 포인터가 되지 않아야 한다.
+    UPROPERTY()
+    TWeakObjectPtr<AController> LastDamageInstigator;
+
     // 추후에 피격 이펙트나 사망 연출을 붙일 수 있도록 블루프린트에 노출해 둔 이벤트
     UFUNCTION(BlueprintImplementableEvent, Category = "Stat")
     void OnDeath();

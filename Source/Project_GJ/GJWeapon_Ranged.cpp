@@ -139,7 +139,9 @@ void AGJWeapon_Ranged::Fire()
         const float OutgoingDamage = UGJCombatStatics::CalculateOutgoingDamage(
             WeaponStat.BaseDamage, AttackPower, CritChance, CritMultiplier, bWasCritical);
 
-        ProjectileToFire->FireInDirection(ShootDirection, OutgoingDamage, WeaponStat.ProjectileSpeed, WeaponStat.Range);
+        // 총알은 크기 1배, 관통 없음. 기본값과 같지만 명시해서 "여기는 스킬이 아니다"를 남긴다.
+        ProjectileToFire->FireInDirection(ShootDirection, OutgoingDamage, WeaponStat.ProjectileSpeed, WeaponStat.Range,
+                                          1.f, 0);
 
         CurrentAmmo--;
         LastFireTime = CurrentTime;

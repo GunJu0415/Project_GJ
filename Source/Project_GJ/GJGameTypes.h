@@ -28,6 +28,11 @@ struct FCharacterStat : public FTableRowBase
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stat")
     float BaseAttackPower = 10.0f;
 
+    // 스킬 데미지에만 쓰이는 공격력. BaseAttackPower와 나눈 이유는 평타 특화와
+    // 스킬 특화 빌드를 갈라놓기 위해서다 - 하나로 합치면 카드가 항상 양쪽을 같이 올린다.
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stat")
+    float SkillPower = 10.0f;
+
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stat")
     float RequiredEXP = 100.0f;
 
@@ -78,6 +83,9 @@ struct FStatValues
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stat")
     float BaseAttackPower = 0.f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stat")
+    float SkillPower = 0.f;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stat")
     float RequiredEXP = 0.f;

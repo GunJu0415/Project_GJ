@@ -1,6 +1,6 @@
-Name,MaxHP,MaxMP,BaseAttackPower,RequiredEXP,Defense,MoveSpeed,CooldownReduction,CritChance,CritMultiplier
-1,100,50,10,100,0,600,0,0,2
-2,120,60,15,250,2,600,0,0.05,2
-3,145,70,21,450,4,610,0,0.08,2
-4,175,80,28,700,7,620,0,0.11,2
-5,210,95,36,1000,10,630,0,0.15,2
+Name,MaxHP,MaxMP,BaseAttackPower,SkillPower,RequiredEXP,Defense,MoveSpeed,CooldownReduction,CritChance,CritMultiplier
+1,100,50,10,10,100,0,600,0,0,2
+2,120,60,15,14,250,2,600,0,0.05,2
+3,145,70,21,20,450,4,610,0,0.08,2
+4,175,80,28,27,700,7,620,0,0.11,2
+5,210,95,36,35,1000,10,630,0,0.15,2

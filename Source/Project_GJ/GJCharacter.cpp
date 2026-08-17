@@ -833,6 +833,8 @@ void AGJCharacter::RecalculateStats(bool bRestoreToFull)
     // 공격력이 -100 아래로 가면 데미지 공식(무기데미지 x (1 + 공격력/100))이 음수를 내고,
     // TakeDamage의 CurrentHP -= 음수가 맞은 쪽을 회복시킨다. 치명타 배율도 같은 이유다.
     S.BaseAttackPower = FMath::Max(Combine(BaseStat.BaseAttackPower, StatBonus.Add.BaseAttackPower, StatBonus.Percent.BaseAttackPower), 0.f);
+    // 음수 클램프가 필요한 이유는 BaseAttackPower와 같다 - 음수 데미지는 적을 치료한다.
+    S.SkillPower = FMath::Max(Combine(BaseStat.SkillPower, StatBonus.Add.SkillPower, StatBonus.Percent.SkillPower), 0.f);
     S.CritMultiplier  = FMath::Max(Combine(BaseStat.CritMultiplier,  StatBonus.Add.CritMultiplier,  StatBonus.Percent.CritMultiplier),  0.f);
 
     S.MoveSpeed = FMath::Max(Combine(BaseStat.MoveSpeed, StatBonus.Add.MoveSpeed, StatBonus.Percent.MoveSpeed), 0.f);
@@ -995,6 +997,23 @@ void AGJCharacter::GJShowCards()
     CardComponent->GJShowCards();
 }
 
+bool AGJCharacter::ConsumeMP(float Amount)
+{
+    if (Amount <= 0.f)
+    {
+        return true;
+    }
+
+    if (CurrentMP < Amount)
+    {
+        return false;
+    }
+
+    CurrentMP = FMath::Clamp(CurrentMP - Amount, 0.f, MaxMP);
+    UpdatePlayerHUD();
+    return true;
+}
+
 void AGJCharacter::GJAddBonus(const FString& StatName, float AddValue, float PercentValue)
 {
     FStatModifier Delta;
@@ -1017,6 +1036,7 @@ void AGJCharacter::GJAddBonus(const FString& StatName, float AddValue, float Per
         TryApply(TEXT("MaxHP"),             &FStatValues::MaxHP)             ||
         TryApply(TEXT("MaxMP"),             &FStatValues::MaxMP)             ||
         TryApply(TEXT("BaseAttackPower"),   &FStatValues::BaseAttackPower)   ||
+        TryApply(TEXT("SkillPower"),        &FStatValues::SkillPower)        ||
         TryApply(TEXT("RequiredEXP"),       &FStatValues::RequiredEXP)       ||
         TryApply(TEXT("Defense"),           &FStatValues::Defense)           ||
         TryApply(TEXT("MoveSpeed"),         &FStatValues::MoveSpeed)         ||
@@ -1028,7 +1048,7 @@ void AGJCharacter::GJAddBonus(const FString& StatName, float AddValue, float Per
     {
         // 조용히 무시하면 오타를 쳤을 때 "보너스가 안 먹네"로 오인해서 없는 버그를 쫓게 된다.
         UE_LOG(LogTemp, Warning,
-            TEXT("GJAddBonus: 알 수 없는 스탯 '%s'. 사용 가능: MaxHP, MaxMP, BaseAttackPower, RequiredEXP, Defense, MoveSpeed, CooldownReduction, CritChance, CritMultiplier"),
+            TEXT("GJAddBonus: 알 수 없는 스탯 '%s'. 사용 가능: MaxHP, MaxMP, BaseAttackPower, SkillPower, RequiredEXP, Defense, MoveSpeed, CooldownReduction, CritChance, CritMultiplier"),
             *StatName);
         return;
     }
@@ -1036,10 +1056,10 @@ void AGJCharacter::GJAddBonus(const FString& StatName, float AddValue, float Per
     AddStatBonus(Delta);
 
     UE_LOG(LogTemp, Log,
-        TEXT("GJAddBonus: %s (가산 %.2f, 증가율 %.0f%%) -> HP=%.0f/%.0f, 공격력=%.1f, 방어력=%.1f, 치명타=%.2f/x%.2f, 이동속도=%.0f, RequiredEXP=%.0f"),
+        TEXT("GJAddBonus: %s (가산 %.2f, 증가율 %.0f%%) -> HP=%.0f/%.0f, 공격력=%.1f, 스킬공격력=%.1f, 방어력=%.1f, 치명타=%.2f/x%.2f, 이동속도=%.0f, RequiredEXP=%.0f"),
         *StatName, AddValue, PercentValue * 100.f,
         CurrentHP, MaxHP,
-        CurrentCharacterStat.BaseAttackPower, Defense,
+        CurrentCharacterStat.BaseAttackPower, CurrentCharacterStat.SkillPower, Defense,
         CritChance, CritMultiplier,
         CurrentCharacterStat.MoveSpeed, CurrentCharacterStat.RequiredEXP);
 }

@@ -39,6 +39,7 @@ static bool IsStatEffectEmpty(const FStatModifier& Modifier)
     auto AllZero = [](const FStatValues& V)
     {
         return V.MaxHP == 0.f && V.MaxMP == 0.f && V.BaseAttackPower == 0.f
+            && V.SkillPower == 0.f
             && V.RequiredEXP == 0.f && V.Defense == 0.f && V.MoveSpeed == 0.f
             && V.CooldownReduction == 0.f && V.CritChance == 0.f && V.CritMultiplier == 0.f;
     };

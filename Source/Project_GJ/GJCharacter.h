@@ -270,6 +270,19 @@ public:
     UFUNCTION(BlueprintPure, Category = "Character Stat")
     float GetAttackPower() const { return CurrentCharacterStat.BaseAttackPower; }
 
+    // 스킬 데미지 계산에 쓰인다. 실효값(테이블 + 보너스)이다.
+    UFUNCTION(BlueprintPure, Category = "Character Stat")
+    float GetSkillPower() const { return CurrentCharacterStat.SkillPower; }
+
+    UFUNCTION(BlueprintPure, Category = "Character Stat")
+    float GetCurrentMP() const { return CurrentMP; }
+
+    // MP가 충분하면 차감하고 true, 부족하면 아무것도 안 하고 false.
+    // HUD 갱신까지 여기서 하는 이유: 호출자마다 UpdatePlayerHUD를 기억하게 하면 언젠가 빠뜨려서
+    // "MP는 줄었는데 바는 그대로"가 된다.
+    UFUNCTION(BlueprintCallable, Category = "Character Stat")
+    bool ConsumeMP(float Amount);
+
     // 경험치를 더한다. 적 처치가 주 경로지만 퀘스트/상자 등 다른 소스가 생겨도 이 입구를 쓴다.
     // 한 번의 호출로 여러 레벨이 오를 수 있다(초과분은 다음 레벨로 이월됨).
     UFUNCTION(BlueprintCallable, Category = "Level")

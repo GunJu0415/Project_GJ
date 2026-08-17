@@ -9,6 +9,7 @@ FStatValues& FStatValues::operator+=(const FStatValues& Other)
     MaxHP             += Other.MaxHP;
     MaxMP             += Other.MaxMP;
     BaseAttackPower   += Other.BaseAttackPower;
+    SkillPower        += Other.SkillPower;
     RequiredEXP       += Other.RequiredEXP;
     Defense           += Other.Defense;
     MoveSpeed         += Other.MoveSpeed;

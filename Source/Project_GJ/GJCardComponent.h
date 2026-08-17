@@ -80,6 +80,37 @@ protected:
     // 런마다 컴포넌트가 새로 만들어지므로 초기화 코드가 필요 없다.
     TSet<FName> TakenCards;
 
+    // 아직 처리하지 않은 카드 선택 횟수.
+    // 킬 한 번에 레벨이 2->5로 오르면 OnLevelUp이 4번 연달아 들어오는데, 그때 화면을
+    // 한 번만 띄우면 플레이어가 보상 3번을 잃는다. 카운터로 쌓아두고 하나씩 소모한다.
+    int32 PendingChoices = 0;
+
+    // 지금 무엇을 묻는 중인가. 위젯은 인덱스만 돌려주므로 그 해석에 필요하다.
+    EGJChoiceMode CurrentMode = EGJChoiceMode::None;
+
+    // Card 모드일 때 인덱스 -> 카드 ID 매핑
+    TArray<FName> CurrentCardIds;
+
+    // WeaponReplace 모드일 때 지급 대기 중인 무기 (이미 월드에 스폰된 상태)
+    UPROPERTY()
+    AGJWeaponBase* PendingWeapon;
+
+    UFUNCTION()
+    void HandleLevelUp(int32 NewLevel);
+
+    UFUNCTION()
+    void HandleChoiceSelected(int32 ChoiceIndex);
+
+    // 대기열에 남은 게 있으면 다음 선택지를 띄우고, 없으면 UI를 닫고 게임을 재개한다.
+    void ShowNextChoice();
+
+    // 위젯을 내리고 일시정지/입력 모드를 원복한다.
+    void CloseChoiceUI();
+
+    // 카드 효과를 적용한다. 무기 교체 선택이 필요해서 아직 끝나지 않았으면 false를
+    // 돌려준다 - 그 경우 호출자는 대기열을 줄이면 안 된다.
+    bool ApplyCard(FName CardId);
+
     // 태그 배율을 적용한 실효 가중치. 테이블의 Weight는 원본이라 건드리지 않는다.
     float GetEffectiveWeight(const FCardData& Card) const;
 

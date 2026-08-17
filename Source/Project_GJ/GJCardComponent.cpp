@@ -5,6 +5,7 @@
 #include "Engine/DataTable.h"
 #include "Blueprint/UserWidget.h"
 #include "GameFramework/PlayerController.h"
+#include "Kismet/GameplayStatics.h"
 
 UGJCardComponent::UGJCardComponent()
 {
@@ -15,6 +16,15 @@ UGJCardComponent::UGJCardComponent()
 void UGJCardComponent::BeginPlay()
 {
     Super::BeginPlay();
+
+    if (AGJCharacter* Character = GetOwnerCharacter())
+    {
+        Character->OnLevelUp.AddDynamic(this, &UGJCardComponent::HandleLevelUp);
+    }
+    else
+    {
+        UE_LOG(LogTemp, Warning, TEXT("GJCardComponent: 소유자가 AGJCharacter가 아닙니다. 카드 시스템이 동작하지 않습니다."));
+    }
 }
 
 AGJCharacter* UGJCardComponent::GetOwnerCharacter() const
@@ -273,12 +283,31 @@ bool UGJCardComponent::OpenChoiceUI(const TArray<FGJChoiceEntry>& Entries)
         }
     }
 
+    // 선택 결과를 받을 구독은 한 번만 건다(위젯 인스턴스를 재사용하므로).
+    CardSelectWidgetInstance->OnChoiceSelected.RemoveDynamic(this, &UGJCardComponent::HandleChoiceSelected);
+    CardSelectWidgetInstance->OnChoiceSelected.AddDynamic(this, &UGJCardComponent::HandleChoiceSelected);
+
     CardSelectWidgetInstance->ShowChoices(Entries);
 
     if (!CardSelectWidgetInstance->IsInViewport())
     {
         CardSelectWidgetInstance->AddToViewport();
     }
+
+    // 일시정지는 액터 Tick 스케줄을 건너뛰게 하는 것뿐이라 사실상 공짜다.
+    // UI/Slate는 월드 Tick과 별개라 멈춘 동안에도 계속 반응한다.
+    UGameplayStatics::SetGamePaused(Character, true);
+
+    // 입력 모드가 UI로 바뀌는 과정에서 마우스 버튼 "뗌" 이벤트가 캐릭터에 안 들어가는
+    // 경우가 있어, 연사 중이었다면 강제로 꺼준다. 안 그러면 카드를 고르고 게임이
+    // 재개됐을 때 무한 연사가 된다(인벤토리에서 겪은 문제).
+    Character->StopAutoFire();
+
+    // UIOnly로 완전히 UI에만 입력을 묶는다. GameAndUI로 두면 카드 바깥 클릭이 게임
+    // 뷰포트로 흘러가 키보드 포커스를 가져가버린다.
+    FInputModeUIOnly InputMode;
+    InputMode.SetWidgetToFocus(CardSelectWidgetInstance->TakeWidget());
+    PC->SetInputMode(InputMode);
 
     return true;
 }
@@ -295,5 +324,231 @@ void UGJCardComponent::GJShowCards()
     if (!OpenChoiceUI(BuildCardEntries(Drawn)))
     {
         UE_LOG(LogTemp, Warning, TEXT("GJShowCards: 화면을 띄우지 못했습니다."));
+    }
+}
+
+void UGJCardComponent::HandleLevelUp(int32 NewLevel)
+{
+    PendingChoices++;
+
+    // 이미 화면이 떠 있으면 카운터만 올리고 끝낸다. AddEXP의 while 루프가 OnLevelUp을
+    // 연달아 쏘는 동안 여기로 여러 번 들어오는데, 각각이 화면을 띄우려 하면 안 된다.
+    if (CurrentMode == EGJChoiceMode::None)
+    {
+        ShowNextChoice();
+    }
+}
+
+void UGJCardComponent::ShowNextChoice()
+{
+    // 후보가 0장이면 그 한 번을 소모하고 다음으로 넘어간다.
+    // 재귀가 아니라 루프인 이유: 풀이 완전히 비었을 때 대기열 길이만큼 스택이 쌓인다.
+    while (PendingChoices > 0)
+    {
+        // 장수는 선택 화면 한 번당 한 번만 굴린다. 리롤이 붙어도 여기가 아니라
+        // CurrentCardIds.Num()을 다시 쓰게 되므로 장수가 흔들리지 않는다.
+        CurrentCardIds = DrawCards(GetDrawCount());
+        if (CurrentCardIds.Num() > 0)
+        {
+            break;
+        }
+        PendingChoices--;
+    }
+
+    if (PendingChoices <= 0)
+    {
+        CloseChoiceUI();
+        return;
+    }
+
+    CurrentMode = EGJChoiceMode::Card;
+
+    if (!OpenChoiceUI(BuildCardEntries(CurrentCardIds)))
+    {
+        // 화면을 못 띄웠는데 일시정지를 걸면 아무것도 안 보이는 채로 게임이 멈춘다.
+        // 대기열을 비우고 정상 상태로 돌아간다.
+        UE_LOG(LogTemp, Warning, TEXT("GJCardComponent: 선택 화면을 띄우지 못해 카드 선택을 건너뜁니다."));
+        PendingChoices = 0;
+        CurrentMode = EGJChoiceMode::None;
+        return;
+    }
+}
+
+void UGJCardComponent::CloseChoiceUI()
+{
+    CurrentMode = EGJChoiceMode::None;
+    CurrentCardIds.Reset();
+
+    if (CardSelectWidgetInstance && CardSelectWidgetInstance->IsInViewport())
+    {
+        CardSelectWidgetInstance->RemoveFromParent();
+    }
+
+    AGJCharacter* Character = GetOwnerCharacter();
+    if (!Character)
+    {
+        return;
+    }
+
+    UGameplayStatics::SetGamePaused(Character, false);
+
+    if (APlayerController* PC = Cast<APlayerController>(Character->GetController()))
+    {
+        // FInputModeGameOnly 기본값(bConsumeCaptureMouseDown=true)은 마우스 캡처를 되찾는
+        // 그 클릭을 캡처용으로만 쓰고 게임 입력으로는 안 넘긴다 - 그래서 UI를 닫은 직후
+        // 첫 클릭이 씹혔던 이력이 있다(인벤토리에서 겪은 문제).
+        FInputModeGameOnly InputMode;
+        InputMode.SetConsumeCaptureMouseDown(false);
+        PC->SetInputMode(InputMode);
+    }
+}
+
+bool UGJCardComponent::ApplyCard(FName CardId)
+{
+    AGJCharacter* Character = GetOwnerCharacter();
+    if (!Character || !CardTable)
+    {
+        return true;
+    }
+
+    const FCardData* Row = CardTable->FindRow<FCardData>(CardId, TEXT("ApplyCard"), false);
+    if (!Row)
+    {
+        return true;
+    }
+
+    switch (Row->EffectType)
+    {
+    case ECardEffectType::StatBonus:
+    {
+        Character->AddStatBonus(Row->StatEffect);
+        break;
+    }
+
+    case ECardEffectType::GrantWeapon:
+    {
+        if (!Row->WeaponClass)
+        {
+            break;
+        }
+
+        FActorSpawnParameters SpawnParams;
+        SpawnParams.Owner = Character;
+        SpawnParams.Instigator = Character;
+        // 캐릭터 위치에 겹쳐서 스폰하므로 충돌 때문에 스폰이 취소되면 안 된다.
+        SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+
+        AGJWeaponBase* NewWeapon = GetWorld()->SpawnActor<AGJWeaponBase>(
+            Row->WeaponClass, Character->GetActorLocation(), Character->GetActorRotation(), SpawnParams);
+
+        if (!NewWeapon)
+        {
+            UE_LOG(LogTemp, Warning, TEXT("ApplyCard: 무기 스폰에 실패했습니다 (%s)."), *CardId.ToString());
+            break;
+        }
+
+        const bool bSlotsFull = (Character->GetWeaponInSlot(0) != nullptr)
+                             && (Character->GetWeaponInSlot(1) != nullptr);
+
+        if (!bSlotsFull)
+        {
+            Character->PickUpWeapon(NewWeapon);
+            break;
+        }
+
+        // 슬롯이 꽉 찼다. 어느 무기를 버릴지 플레이어에게 묻는다.
+        // 여기서 대기열을 줄이면 안 된다 - 이 레벨업의 처리는 슬롯을 고른 뒤에야 끝난다.
+        TArray<FGJChoiceEntry> Entries;
+        for (int32 SlotIndex = 0; SlotIndex < 2; SlotIndex++)
+        {
+            AGJWeaponBase* Equipped = Character->GetWeaponInSlot(SlotIndex);
+            FGJChoiceEntry Entry;
+            Entry.DisplayName = FText::FromName(Equipped ? Equipped->GetWeaponRowName() : NAME_None);
+            Entry.Description = FText::Format(
+                NSLOCTEXT("GJ", "ReplaceSlot", "{0}번 무기를 버리고 교체한다"), FText::AsNumber(SlotIndex + 1));
+            Entry.Icon = Equipped ? Equipped->GetWeaponStat().WeaponIcon : nullptr;
+            Entries.Add(Entry);
+        }
+
+        // 교체 화면을 못 띄우면 카드 화면이 뜬 채로 모드만 바뀌어, 플레이어가 카드를
+        // 누르는 순간 그 인덱스가 슬롯 번호로 해석된다. 그 상태에 빠지느니 슬롯 선택을
+        // 포기하고 기본 규칙(활성 슬롯 교체)으로 지급하는 편이 낫다.
+        if (!OpenChoiceUI(Entries))
+        {
+            UE_LOG(LogTemp, Warning,
+                TEXT("ApplyCard: 무기 교체 화면을 띄우지 못해 활성 슬롯을 자동 교체합니다 (%s)."),
+                *CardId.ToString());
+            Character->PickUpWeapon(NewWeapon);
+            break;
+        }
+
+        PendingWeapon = NewWeapon;
+        CurrentMode = EGJChoiceMode::WeaponReplace;
+
+        // 스택 불가 무기 카드는 여기서 기록해둔다. 무기 교체는 두 단계라 아래의
+        // 공통 기록 지점(return true 직전)을 지나가지 않기 때문이다.
+        if (!Row->bStackable)
+        {
+            TakenCards.Add(CardId);
+        }
+
+        return false;  // 아직 안 끝났다
+    }
+
+    case ECardEffectType::Ability:
+    {
+        // 조용히 무시하면 데이터 테이블에 능력 카드를 넣어두고 "왜 안 먹지?"로 헤매게 된다.
+        UE_LOG(LogTemp, Warning,
+            TEXT("ApplyCard: 능력 카드 '%s'는 아직 미구현입니다 (스킬 시스템 M2.7 필요)."),
+            *CardId.ToString());
+        break;
+    }
+    }
+
+    if (!Row->bStackable)
+    {
+        TakenCards.Add(CardId);
+    }
+
+    return true;
+}
+
+void UGJCardComponent::HandleChoiceSelected(int32 ChoiceIndex)
+{
+    AGJCharacter* Character = GetOwnerCharacter();
+    if (!Character)
+    {
+        return;
+    }
+
+    if (CurrentMode == EGJChoiceMode::Card)
+    {
+        if (!CurrentCardIds.IsValidIndex(ChoiceIndex))
+        {
+            return;
+        }
+
+        const FName CardId = CurrentCardIds[ChoiceIndex];
+        if (!ApplyCard(CardId))
+        {
+            // 무기 교체 선택으로 넘어갔다. 대기열은 그대로 두고 화면만 바뀐 상태다.
+            return;
+        }
+
+        PendingChoices--;
+        ShowNextChoice();
+        return;
+    }
+
+    if (CurrentMode == EGJChoiceMode::WeaponReplace)
+    {
+        if (PendingWeapon)
+        {
+            Character->ReplaceWeaponInSlot(ChoiceIndex, PendingWeapon);
+            PendingWeapon = nullptr;
+        }
+
+        PendingChoices--;
+        ShowNextChoice();
     }
 }

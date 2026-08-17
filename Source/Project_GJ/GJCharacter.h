@@ -378,6 +378,12 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Weapon")
     bool ReplaceWeaponInSlot(int32 SlotIndex, AGJWeaponBase* NewWeapon);
 
+    // 연사 상태를 강제로 해제한다. 모달 UI를 열 때 필요하다 - 입력 모드가 UI로 바뀌면
+    // 마우스 "뗌" 이벤트가 캐릭터에 안 들어와서 bIsAutoFiring이 켜진 채로 굳고,
+    // UI를 닫고 Tick이 다시 돌 때 무한 연사가 된다.
+    UFUNCTION(BlueprintCallable, Category = "Combat")
+    void StopAutoFire() { bIsAutoFiring = false; }
+
     // 지정한 슬롯(0/1)의 무기로 전환 - 1·2번 키 입력과 인벤토리 무기 페이지 클릭 양쪽에서 호출됨.
     // 무기의 SwapMontage가 있으면 그 몽타주를 재생하는 동안 WeaponSwap 상태로 다른 입력을 막음.
     UFUNCTION(BlueprintCallable, Category = "Weapon")

@@ -413,6 +413,45 @@ BT 트리 구조 자체(Selector로 IsInAttackRange 분기해서 MoveTo vs Melee
 
 ---
 
+## 6.7 카드 선택 시스템 (레벨업 선택지)
+
+레벨이 오르면 카드 3장이 뜨고 하나를 고른다. 로직 전부가 `UGJCardComponent`(`GJCardComponent.h/.cpp`)에 있고, `AGJCharacter`는 생성자에서 컴포넌트를 붙이고 `OnLevelUp`을 쏘기만 한다 — **캐릭터는 카드를 모른다.**
+
+| 요소 | 설명 |
+|---|---|
+| `DT_CardData` (`FCardData`) | 행 이름 = 카드 ID. 이름/설명/아이콘 + `EffectType` + 페이로드(`StatEffect` 또는 `WeaponClass`) + `CardTags` + `bStackable` + `Weight` |
+| 뽑기 | 가중 랜덤 **비복원** 추출. 한 장 뽑을 때마다 **총합을 다시 계산**한다 — 안 그러면 빠진 카드의 가중치가 구간에 남아 뽑기가 한쪽으로 몰린다 |
+| 제외 조건 | `Weight <= 0`, 이미 먹은 `bStackable=false` 카드, `WeaponClass`가 빈 무기 카드, 효과가 전부 0인 스탯 카드. **무기 슬롯이 꽉 찼다는 이유로는 안 거른다** |
+| 장수 | `GetDrawCount()` = `NumCardsToDraw` + `BonusCardSlots`(영구 특성용) + `ExtraCardChance` 판정 1장. 최소 1장 보장 |
+| 대기열 | `PendingChoices` 카운터. 킬 한 번에 레벨 2→5가 실제로 일어나므로(`AddEXP`의 `while` 루프) 화면을 한 번만 띄우면 보상 3번을 잃는다 |
+| 효과 적용 | `StatBonus` → `AddStatBonus`, `GrantWeapon` → 스폰 후 `PickUpWeapon`(슬롯이 차 있으면 교체 선택), `Ability` → **미구현, 경고만**(M2.7) |
+
+**위젯은 카드를 모른다.** `UGJCardSelectWidget`은 `FGJChoiceEntry`(이름/설명/아이콘) 목록을 받아 늘어놓고 **선택 인덱스**만 돌려준다. 인덱스의 의미는 컴포넌트가 `EGJChoiceMode`로 해석한다 — `Card`면 뽑힌 카드 목록의 위치, `WeaponReplace`면 버릴 슬롯 번호. **덕분에 무기 교체용 위젯이 따로 없다.**
+
+**무기 슬롯이 꽉 찬 상태에서 무기 카드를 고르면** 같은 위젯에 지금 든 무기 2개를 넣어 "어느 걸 버릴지" 묻고, `AGJCharacter::ReplaceWeaponInSlot`으로 적용한다. 버린 무기는 `DropWeapon`을 거쳐 바닥에 떨어지므로 다시 주울 수 있다. **이 단계에서는 대기열을 줄이지 않는다** — 먼저 줄이면 연속 레벨업 중에 카드 한 장이 통째로 증발한다. 또한 스택 불가 무기 카드는 **이 분기 안에서 따로 `TakenCards`에 기록**한다. 공통 기록 지점은 함수 맨 아래에 있는데 교체 분기는 그 전에 빠져나가므로, 안 그러면 같은 무기 카드가 계속 다시 뜬다.
+
+### 태그로 트리 밀어주기
+
+카드마다 `FGameplayTagContainer CardTags`(예: `Tree.Offense`, `Weapon.Gun`)가 붙고, 컴포넌트의 `TagWeightMultipliers`에 등록된 배율이 뽑기 가중치에 곱해진다(`GetEffectiveWeight`). 플레이어가 타고 있는 트리의 카드를 더 자주 띄우기 위한 장치다.
+
+- **`FName`이 아니라 게임플레이 태그인 이유는 계층**이다. `Tree.Fire` 배율 하나가 `Tree.Fire.Shotgun` 카드까지 자동으로 밀어준다(`HasTag`는 계층 매칭).
+- **배율 순회는 카드 태그가 아니라 맵 항목 기준**이다. 카드 기준으로 돌면 `Tree.Fire`와 `Tree.Fire.Shotgun`을 둘 다 가진 카드가 같은 배율을 두 번 먹는다.
+- **`Weight <= 0` 필터는 테이블 원본값으로 판정**한다. 꺼둔 카드가 배율 때문에 되살아나면 안 된다.
+- 배율이 겹쳐 곱해지므로 `MaxTagWeightMultiplier`(기본 5배)로 상한을 둔다. 한 카드가 풀을 독점하는 것을 막는다.
+- 배율을 올리는 주체(직업 카드든, 먹은 카드 누적이든)는 전부 `SetTagWeightMultiplier` 하나로 들어와야 한다. 경로가 둘로 갈리면 배율이 어떻게 합쳐지는지 아무도 모르게 된다.
+
+태그는 `Config/DefaultGameplayTags.ini`에 등록되어 있다(`Tree.Offense/Defense/Agility/Fire`, `Weapon.Gun/Melee`). **이 파일은 에디터 시작 시점에만 읽히므로, 태그를 추가하면 라이브 코딩이 아니라 에디터 재시작이 필요하다.**
+
+> **소프트락 방지**: 위젯 클래스가 비어 있거나 생성에 실패하면 **일시정지를 걸지 않고** 경고 후 대기열을 비운다. 화면은 안 뜨는데 게임만 멈추는 상태가 가장 추적하기 어렵다. 무기 교체 화면이 실패한 경우도 마찬가지로, 그 상태에 빠지느니 슬롯 선택을 포기하고 기본 규칙(활성 슬롯 교체)으로 지급한다 — 안 그러면 카드 3장이 뜬 채 모드만 바뀌어 세 번째 카드를 누르면 없는 슬롯 2번을 교체하려 든다.
+
+일시정지·입력 모드는 인벤토리 모달과 같은 패턴이다(2.2절 `ToggleInventory` 참고): 열 때 `SetGamePaused(true)` + `FInputModeUIOnly` + `SetWidgetToFocus` + `StopAutoFire()`, 닫을 때 `SetGamePaused(false)` + `FInputModeGameOnly` + `SetConsumeCaptureMouseDown(false)`. 인벤토리와 달리 **닫기 키가 없다** — 반드시 한 장 골라야 넘어간다.
+
+**개발용 콘솔 명령**: `GJDrawCards`(뽑기 결과를 로그로만), `GJShowCards`(레벨업 없이 화면만 띄움), `GJSetTagWeight <태그> <배율>`(트리 밀어주기 시험). 셋 다 **`AGJCharacter`의 `UFUNCTION(Exec)`**이고 몸통은 `UGJCardComponent`에 있다 — 컴포넌트에 직접 `Exec`를 달면 콘솔이 `Command not recognized`를 낸다(실제로 겪음).
+
+**카드도 런마다 초기화된다.** 컴포넌트가 캐릭터와 함께 새로 만들어지므로 `TakenCards`와 `TagWeightMultipliers`가 비워진다. EXP·스탯 보너스와 같은 메커니즘이다.
+
+---
+
 ## 7. UI / 위젯
 
 체력바/HP·MP 바는 **C++ 베이스 클래스 + `BindWidget`** 패턴을 씀 (블루프린트 이벤트 그래프에 로직을 두지 않음 — UMG 이벤트 그래프 자동화 작업 중 문제가 있었던 이력이 있어서, 값 갱신 로직은 전부 C++ `UFUNCTION(BlueprintCallable)`로 두고 디자이너에서는 이름만 맞는 위젯을 배치하면 되게 함).
@@ -421,6 +460,8 @@ BT 트리 구조 자체(Selector로 IsInAttackRange 분기해서 MoveTo vs Melee
 |---|---|---|---|---|
 | `UGJHealthBarWidget` | `WBP_EnemyHealthBar` | `HealthProgressBar` | `UpdateHealth(Current, Max)` | 적 머리 위, `UWidgetComponent` (Screen space) |
 | `UGJPlayerHUDWidget` | `WBP_PlayerHUD` | `HPBar`, `MPBar` (strict) / `EXPBar`, `LevelText` (**Optional**) | `UpdateHP(Current,Max)` / `UpdateMP(Current,Max)` / `UpdateEXP(Current,Required,Level)` | 좌상단, `AddToViewport()` |
+| `UGJCardSelectWidget` | `WBP_CardSelect` | `CardContainer` (HorizontalBox, strict) | `ShowChoices(TArray<FGJChoiceEntry>)` → `OnChoiceSelected(int32)` | 레벨업 시 중앙, 일시정지 모달 |
+| `UGJCardWidget` | `WBP_Card` | `IconImage`, `NameText`, `DescText`, `SelectButton` (전부 strict) | `Setup(Index, Entry)` → `OnCardClicked(int32)` | `CardContainer`에 런타임 생성 |
 
 인벤토리/무기 페이지 UI(`UGJInventoryWidget`, `UGJInventorySlotWidget`, `UGJWeaponSlotWidget`)는 3.2절 참고. 게임오버 화면(`UGJGameOverWidget` → `WBP_GameOver`, `BindWidget: ReturnToHubButton` / `BindWidgetOptional: RunCountText`)은 6.5절 참고 — 이것도 동일한 C++ 베이스 + `BindWidget` 패턴이다.
 
@@ -482,6 +523,18 @@ BT 트리 구조 자체(Selector로 IsInAttackRange 분기해서 MoveTo vs Melee
 | `CritMultiplier` | 2.0 | 치명타 배율 |
 | `ExpReward` | 10 | 이 적을 죽인 플레이어가 얻는 경험치. 적 레벨 등에서 유도하지 않고 적마다 명시 — 유도하면 "좀 더 단단하게" 같은 조정이 성장 속도까지 같이 바꿔버림. `float`인 이유는 비교 대상인 `RequiredEXP`가 `float`이라 파이프라인을 통일하기 위함 |
 
+### `FCardData` — `DT_CardData` (행 이름 = 카드 ID)
+| 필드 | 기본값 | 설명 |
+|---|---|---|
+| `DisplayName` / `Description` | — | 카드에 표시되는 이름과 설명 |
+| `Icon` | — | UTexture2D. 비어 있으면 아이콘 영역이 숨겨진다(빈 브러시는 흰 사각형으로 보임) |
+| `EffectType` | `StatBonus` | `StatBonus` / `GrantWeapon` / `Ability`(미구현) |
+| `StatEffect` | 전부 0 | `EffectType == StatBonus`일 때만 쓰임. `AddStatBonus`로 넘어간다 |
+| `WeaponClass` | — | `EffectType == GrantWeapon`일 때만 쓰임 |
+| `CardTags` | 비어 있음 | 이 카드가 속한 트리/계열. `TagWeightMultipliers`가 계층 매칭으로 가중치를 밀어준다 (6.7절) |
+| `bStackable` | true | false면 한 번 고른 뒤 풀에서 영구 제외. 무기·고유 효과용 |
+| `Weight` | 1.0 | 가중 랜덤의 가중치. **0 이하면 절대 안 뽑힌다**(카드를 임시로 끄는 용도로도 쓸 수 있음). 태그 배율은 이 값에 곱해지지만, 제외 판정은 항상 이 원본값으로 한다 |
+
 ### `FStatValues` / `FStatModifier` — 데이터 테이블 행 아님 (스탯 보너스용)
 
 `FStatValues`는 `FCharacterStat`과 **같은 9개 필드**(`MaxHP`, `MaxMP`, `BaseAttackPower`, `RequiredEXP`, `Defense`, `MoveSpeed`, `CooldownReduction`, `CritChance`, `CritMultiplier`)를 갖되 **전부 기본값이 0**이다. `FCharacterStat`을 재사용하지 않는 이유가 이것 — 그쪽 기본값이 `MaxHP=100`, `MoveSpeed=600`, `CritMultiplier=2`라서 "보너스 없음"을 표현할 수 없다. 합칠 때 쓰는 `operator+=`는 `GJGameTypes.cpp`에 있다.
@@ -520,8 +573,15 @@ BT 트리 구조 자체(Selector로 IsInAttackRange 분기해서 MoveTo vs Melee
 - 런은 **사망으로만** 끝남 — 클리어(승리) 조건이 없음 (M5)
 - 허브에는 런 시작 포탈 하나뿐 — 상점/영구 강화 미구현 (M6)
 - `FCharacterStat.CooldownReduction`은 필드만 있고 어디에도 연결되지 않음 — 적용 대상이 될 스킬 시스템이 아직 없음
-- 레벨업 시 선택지(카드 3장)가 없음 — `AGJCharacter::OnLevelUp` 델리게이트만 준비돼 있고 구독자가 없음. 스테이지 클리어 쪽 트리거는 진행 구조(M5)가 생긴 뒤에 별도로 필요
 - 액티브 스킬 개념이 없음 — 파이어볼 같은 능력 카드를 붙이려면 스킬 슬롯/쿨다운/MP 소모/입력 바인딩이 전부 새로 필요하다. 발사체(`AGJProjectile` 풀)는 재사용 가능
+- 능력 카드(`ECardEffectType::Ability`)는 골라도 경고만 찍힘 — 위 항목의 스킬 시스템이 통째로 없음 (M2.7)
+- 스테이지 클리어 시 카드 지급 트리거가 없음 — 진행 구조(M5)가 생긴 뒤. `UGJCardComponent`의 대기열 진입점(`HandleLevelUp` 몸통)을 공개 함수로 빼면 그쪽에서 부르기만 하면 된다
+- 카드 리롤/스킵이 없음 — 3장이 전부 마음에 안 들어도 반드시 하나를 골라야 함. `DrawCards(Count)`는 부작용이 없게 짜여 있어서 리롤은 재호출만으로 되지만, 버튼과 횟수 관리가 없다
+- 선택지 수를 늘리는 경로(`BonusCardSlots`, `ExtraCardChance`)는 멤버만 있고 아무도 쓰지 않음 — 영구 특성(M6)이 생기면 여기에 꽂는다
+- 태그 배율을 올리는 주체가 없음 — `SetTagWeightMultiplier`는 콘솔에서만 호출된다. "직업 카드"나 "먹은 카드 누적"이 붙으면 둘 다 이 함수로 들어와야 한다
+- 카드 희귀도가 확률(`Weight`)로만 존재하고 시각적 구분(색 테두리 등)이 없음
+- `DT_CardData`의 카드 6장은 **검증용 임시 데이터** — 아이콘도 기존 텍스처를 자리표시자로 쓰고 있음
+- 회복 수단이 하나도 없음 — 레벨업도 최대치 증가분만 얹고, 회복 카드나 포션이 없어서 런 내내 체력이 단방향으로 깎인다. 회복 카드를 넣으려면 `ECardEffectType`에 값 추가가 필요
 - 레벨업/경험치 획득 연출(팝업, 사운드, 파티클)이 없음 — 현재는 HUD 바와 `UE_LOG`뿐
 - `DT_CharacterStat`의 레벨 2~5 성장 곡선은 **임시 테스트 값** — 실제 밸런싱은 스테이지 진행(M5)이 생긴 뒤에 해야 의미가 있음
 - `WBP_PlayerHUD`의 초상화(`PortraitImage`)는 `T_UE_Logo_M` 자리표시자 — 실제 캐릭터 일러스트로 교체 필요

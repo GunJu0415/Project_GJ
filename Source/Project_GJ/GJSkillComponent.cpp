@@ -301,7 +301,7 @@ void UGJSkillComponent::LogSkillInfo() const
         return;
     }
 
-    const TCHAR* SlotKeys[GJ_SKILL_SLOT_COUNT] = { TEXT("우클릭"), TEXT("Q"), TEXT("R") };
+    const TCHAR* SlotKeys[GJ_SKILL_SLOT_COUNT] = { TEXT("우클릭"), TEXT("Q"), TEXT("F") };
     const float Now = World->GetTimeSeconds();
 
     UE_LOG(LogTemp, Log, TEXT("=== 스킬 상태 (MP %.0f, 스킬공격력 %.1f) ==="),

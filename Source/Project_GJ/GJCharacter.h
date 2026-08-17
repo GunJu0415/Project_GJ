@@ -323,6 +323,7 @@ public:
     UFUNCTION(Exec)
     void GJSetTagWeight(const FString& TagName, float Multiplier);
 
+    // 슬롯 0/1/2가 각각 우클릭/Q/F에 대응한다 (IMC_GJ 매핑)
     // 예) GJShowCards -> 레벨업 없이 카드 화면만 띄운다
     UFUNCTION(Exec)
     void GJShowCards();
@@ -406,6 +407,11 @@ public:
     // UI를 닫고 Tick이 다시 돌 때 무한 연사가 된다.
     UFUNCTION(BlueprintCallable, Category = "Combat")
     void StopAutoFire() { bIsAutoFiring = false; }
+
+    // 모달 UI를 열 때 연사와 함께 차징도 버린다. 입력 모드가 UI로 바뀌면 마우스 "뗌"이
+    // 캐릭터에 안 들어와서 차징이 눌린 채 굳고, UI를 닫는 순간 최대 차징으로 발사된다.
+    UFUNCTION(BlueprintCallable, Category = "Combat")
+    void CancelSkillCharge();
 
     // 지정한 슬롯(0/1)의 무기로 전환 - 1·2번 키 입력과 인벤토리 무기 페이지 클릭 양쪽에서 호출됨.
     // 무기의 SwapMontage가 있으면 그 몽타주를 재생하는 동안 WeaponSwap 상태로 다른 입력을 막음.

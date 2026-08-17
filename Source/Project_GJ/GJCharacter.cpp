@@ -131,6 +131,12 @@ void AGJCharacter::HandleDeath()
     // Dead 상태 체크로 어차피 막히긴 하지만, 아예 호출 자체를 멈추는 게 더 깔끔함)
     bIsAutoFiring = false;
 
+    // 차징도 같이 버린다. 죽은 뒤 마우스를 떼면 구체가 나가면 안 된다.
+    if (SkillComponent)
+    {
+        SkillComponent->CancelCharge();
+    }
+
     // 런 종료 흐름(회차 카운트, 화면, 레벨 이동)은 전부 게임 모드가 담당한다.
     // 캐릭터는 "죽었다"는 사실만 알리고 게임 흐름은 알지 못한다.
     if (AGJGameMode* GJGameMode = Cast<AGJGameMode>(UGameplayStatics::GetGameMode(this)))
@@ -149,6 +155,16 @@ void AGJCharacter::HandleDeath()
 // ==========================================
 void AGJCharacter::ToggleInventory()
 {
+    // 인벤토리는 차징을 막지 않고 취소시킨 뒤 열린다. 회피와 달리 이건 전투 행동이 아니라
+    // "지금 하던 걸 그만두고 메뉴를 본다"는 조작이라, 눌렀는데 아무 반응이 없으면
+    // 입력이 씹힌 것으로 느껴진다.
+    // 여기서 반드시 꺼야 하는 이유: 입력 모드가 UI로 바뀌면 마우스 "뗌"이 캐릭터에
+    // 안 들어와서 차징이 눌린 채 굳고, 인벤토리를 닫는 순간 최대 차징으로 발사된다.
+    if (SkillComponent)
+    {
+        SkillComponent->CancelCharge();
+    }
+
     if (!InventoryWidgetClass) return;
 
     APlayerController* PC = Cast<APlayerController>(GetController());
@@ -434,6 +450,9 @@ void AGJCharacter::AttackInputPressed()
         return;
     }
 
+    // 차징 중에는 평타가 안 나간다. 차징을 끊으려면 회피를 써야 한다.
+    if (SkillComponent && SkillComponent->IsCharging()) return;
+
     if (!StateComponent) return;
     if (StateComponent->GetState() == ECharacterState::Dead) return;
     if (StateComponent->GetState() == ECharacterState::Dodge) return;
@@ -565,6 +584,8 @@ void AGJCharacter::AttackInputReleased()
 // ==========================================
 void AGJCharacter::ReloadInputPressed()
 {
+    if (SkillComponent && SkillComponent->IsCharging()) return;
+
     if (!EquippedWeapon || !StateComponent) return;
     if (StateComponent->GetState() == ECharacterState::Dead) return;
     if (StateComponent->GetState() == ECharacterState::Reloading) return;
@@ -645,6 +666,14 @@ void AGJCharacter::InteractInputPressed()
 void AGJCharacter::PerformDodge()
 {
     if (!StateComponent || StateComponent->GetState() != ECharacterState::Idle) return;
+
+    // 회피가 차징을 끊는 유일한 수단이다. MP도 쿨타임도 소모하지 않는다.
+    // 위의 Idle 검사를 통과한 뒤에 부르는 이유: 회피가 실제로 나가지 않는 상황에서
+    // 차징만 날려버리면 플레이어는 아무 이유 없이 차징을 잃는다.
+    if (SkillComponent)
+    {
+        SkillComponent->CancelCharge();
+    }
 
     FVector WorldDirection;
     if (MoveInput.IsNearlyZero())
@@ -1021,6 +1050,14 @@ void AGJCharacter::GJShowCards()
     CardComponent->GJShowCards();
 }
 
+void AGJCharacter::CancelSkillCharge()
+{
+    if (SkillComponent)
+    {
+        SkillComponent->CancelCharge();
+    }
+}
+
 void AGJCharacter::Skill1Pressed()  { if (SkillComponent) SkillComponent->OnSkillPressed(0); }
 void AGJCharacter::Skill1Released() { if (SkillComponent) SkillComponent->OnSkillReleased(0); }
 void AGJCharacter::Skill2Pressed()  { if (SkillComponent) SkillComponent->OnSkillPressed(1); }
@@ -1305,6 +1342,8 @@ bool AGJCharacter::ReplaceWeaponInSlot(int32 SlotIndex, AGJWeaponBase* NewWeapon
 
 void AGJCharacter::SwapToWeaponSlot(int32 SlotIndex)
 {
+    if (SkillComponent && SkillComponent->IsCharging()) return;
+
     if (!WeaponSlots.IsValidIndex(SlotIndex) || !WeaponSlots[SlotIndex])
     {
         return; // 빈 슬롯으로는 전환할 수 없음

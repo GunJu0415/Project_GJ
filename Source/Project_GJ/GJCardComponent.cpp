@@ -303,6 +303,7 @@ bool UGJCardComponent::OpenChoiceUI(const TArray<FGJChoiceEntry>& Entries)
     // 경우가 있어, 연사 중이었다면 강제로 꺼준다. 안 그러면 카드를 고르고 게임이
     // 재개됐을 때 무한 연사가 된다(인벤토리에서 겪은 문제).
     Character->StopAutoFire();
+    Character->CancelSkillCharge();
 
     // UIOnly로 완전히 UI에만 입력을 묶는다. GameAndUI로 두면 카드 바깥 클릭이 게임
     // 뷰포트로 흘러가 키보드 포커스를 가져가버린다.

@@ -11,6 +11,10 @@ class AGJProjectile;
 // 스킬 슬롯 수. 우클릭 / Q / R 세 개다.
 #define GJ_SKILL_SLOT_COUNT 3
 
+// 슬롯 내용(어느 칸에 무슨 스킬)이 바뀌었다. HUD와 인벤토리가 구독한다.
+// 쿨타임은 여기 안 태운다 - 매 프레임 바뀌는 값이라 델리게이트로 밀면 방송만 하다 끝난다.
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnSkillSlotsChangedSignature);
+
 // UPROPERTY TMap은 값으로 TArray를 직접 담지 못해서 한 겹 감싼다.
 USTRUCT()
 struct FGJProjectilePool
@@ -60,6 +64,22 @@ public:
     // 슬롯 3개의 상태를 로그로 출력한다. AGJCharacter의 GJSkillInfo가 부른다.
     UFUNCTION(BlueprintCallable, Category = "Skill")
     void LogSkillInfo() const;
+
+    UPROPERTY(BlueprintAssignable, Category = "Skill")
+    FOnSkillSlotsChangedSignature OnSkillSlotsChanged;
+
+    // 0 = 준비됨, 1 = 방금 썼음. 빈 슬롯이나 쿨타임 0인 스킬도 0.
+    // UI가 매 프레임 물어본다.
+    UFUNCTION(BlueprintPure, Category = "Skill")
+    float GetCooldownRatio(int32 SlotIndex) const;
+
+    // 두 슬롯의 스킬과 쿨타임을 함께 맞바꾼다.
+    UFUNCTION(BlueprintCallable, Category = "Skill")
+    void SwapSkillSlots(int32 SlotA, int32 SlotB);
+
+    // 슬롯 번호에 대응하는 키 이름. 지금까지 이 문자열이 여러 곳에 하드코딩돼 있었다.
+    UFUNCTION(BlueprintPure, Category = "Skill")
+    static FText GetSlotKeyLabel(int32 SlotIndex);
 
 protected:
     virtual void BeginPlay() override;

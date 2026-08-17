@@ -91,6 +91,8 @@ void UGJSkillComponent::EquipSkillInSlot(int32 SlotIndex, FName SkillId)
     CooldownEndTime[SlotIndex] = 0.f;
 
     UE_LOG(LogTemp, Log, TEXT("EquipSkillInSlot: 슬롯 %d <- %s"), SlotIndex, *SkillId.ToString());
+
+    OnSkillSlotsChanged.Broadcast();
 }
 
 void UGJSkillComponent::CancelCharge()
@@ -292,6 +294,63 @@ void UGJSkillComponent::FireSkill(int32 SlotIndex, const FSkillData& Skill, floa
         Skill.BaseScale * Multiplier, Skill.MPCost, Skill.Cooldown);
 }
 
+FText UGJSkillComponent::GetSlotKeyLabel(int32 SlotIndex)
+{
+    // IMC_GJ의 IA_Skill1/2/3 매핑과 일치해야 한다. 매핑을 바꾸면 여기도 바꾼다.
+    switch (SlotIndex)
+    {
+    case 0:  return NSLOCTEXT("GJ", "SkillKey0", "우클릭");
+    case 1:  return NSLOCTEXT("GJ", "SkillKey1", "Q");
+    case 2:  return NSLOCTEXT("GJ", "SkillKey2", "F");
+    default: return FText::GetEmpty();
+    }
+}
+
+float UGJSkillComponent::GetCooldownRatio(int32 SlotIndex) const
+{
+    if (!CooldownEndTime.IsValidIndex(SlotIndex))
+    {
+        return 0.f;
+    }
+
+    const UWorld* World = GetWorld();
+    if (!World)
+    {
+        return 0.f;
+    }
+
+    const FSkillData* Skill = FindSkill(GetSkillInSlot(SlotIndex));
+    if (!Skill || Skill->Cooldown <= 0.f)
+    {
+        return 0.f;
+    }
+
+    const float Remaining = CooldownEndTime[SlotIndex] - World->GetTimeSeconds();
+    return FMath::Clamp(Remaining / Skill->Cooldown, 0.f, 1.f);
+}
+
+void UGJSkillComponent::SwapSkillSlots(int32 SlotA, int32 SlotB)
+{
+    if (!EquippedSkills.IsValidIndex(SlotA) || !EquippedSkills.IsValidIndex(SlotB) || SlotA == SlotB)
+    {
+        return;
+    }
+
+    // 차징 중인 슬롯이 섞이면 손을 뗐을 때 의도하지 않은 스킬이 나간다.
+    if (ChargingSlot == SlotA || ChargingSlot == SlotB)
+    {
+        CancelCharge();
+    }
+
+    EquippedSkills.Swap(SlotA, SlotB);
+
+    // 쿨타임도 같이 옮긴다. 안 그러면 스킬을 쓰고 자리를 바꾸는 것이
+    // 쿨타임 초기화 수단이 된다.
+    CooldownEndTime.Swap(SlotA, SlotB);
+
+    OnSkillSlotsChanged.Broadcast();
+}
+
 void UGJSkillComponent::LogSkillInfo() const
 {
     AGJCharacter* Character = GetOwnerCharacter();
@@ -301,7 +360,6 @@ void UGJSkillComponent::LogSkillInfo() const
         return;
     }
 
-    const TCHAR* SlotKeys[GJ_SKILL_SLOT_COUNT] = { TEXT("우클릭"), TEXT("Q"), TEXT("F") };
     const float Now = World->GetTimeSeconds();
 
     UE_LOG(LogTemp, Log, TEXT("=== 스킬 상태 (MP %.0f, 스킬공격력 %.1f) ==="),
@@ -311,7 +369,7 @@ void UGJSkillComponent::LogSkillInfo() const
     {
         const float Remaining = FMath::Max(CooldownEndTime[i] - Now, 0.f);
         UE_LOG(LogTemp, Log, TEXT("  슬롯 %d (%s): %s / 쿨 %.1fs%s"),
-            i, SlotKeys[i],
+            i, *GetSlotKeyLabel(i).ToString(),
             EquippedSkills[i].IsNone() ? TEXT("(비어 있음)") : *EquippedSkills[i].ToString(),
             Remaining,
             (ChargingSlot == i) ? TEXT(" / 차징 중") : TEXT(""));

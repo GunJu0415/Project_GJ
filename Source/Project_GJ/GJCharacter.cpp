@@ -1099,6 +1099,18 @@ void AGJCharacter::GJSkillInfo()
     SkillComponent->LogSkillInfo();
 }
 
+void AGJCharacter::GJSwapSkills(int32 SlotA, int32 SlotB)
+{
+    if (!SkillComponent)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("GJSwapSkills: SkillComponent가 없습니다."));
+        return;
+    }
+
+    SkillComponent->SwapSkillSlots(SlotA, SlotB);
+    SkillComponent->LogSkillInfo();
+}
+
 bool AGJCharacter::ConsumeMP(float Amount)
 {
     if (Amount <= 0.f)

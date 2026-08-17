@@ -525,8 +525,6 @@ bool UGJCardComponent::ApplyCard(FName CardId)
 
         // 슬롯이 꽉 찼다. 어느 스킬을 버릴지 묻는다. 무기 교체와 같은 위젯을 쓴다 -
         // 위젯이 FGJChoiceEntry를 받아 인덱스만 돌려주기 때문에 전용 화면이 필요 없다.
-        const TCHAR* SlotKeys[GJ_SKILL_SLOT_COUNT] = { TEXT("우클릭"), TEXT("Q"), TEXT("F") };
-
         TArray<FGJChoiceEntry> Entries;
         for (int32 SlotIndex = 0; SlotIndex < GJ_SKILL_SLOT_COUNT; SlotIndex++)
         {
@@ -538,7 +536,7 @@ bool UGJCardComponent::ApplyCard(FName CardId)
             // 슬롯 선택이 곧 키 선택이다. 번호만 보여주면 어느 손가락이 바뀌는지 알 수 없다.
             Entry.Description = FText::Format(
                 NSLOCTEXT("GJ", "ReplaceSkillSlot", "{0} 자리를 버리고 교체한다"),
-                FText::FromString(SlotKeys[SlotIndex]));
+                UGJSkillComponent::GetSlotKeyLabel(SlotIndex));
             Entry.Icon = Equipped ? Equipped->Icon : nullptr;
             Entries.Add(Entry);
         }

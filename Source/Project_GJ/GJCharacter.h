@@ -337,6 +337,10 @@ public:
     UFUNCTION(Exec)
     void GJSkillInfo();
 
+    // 예) GJSwapSkills 0 1 -> 우클릭과 Q의 스킬을 (쿨타임까지) 맞바꾼다
+    UFUNCTION(Exec)
+    void GJSwapSkills(int32 SlotA, int32 SlotB);
+
     // 카드 컴포넌트가 능력 카드를 적용할 때 쓴다.
     UFUNCTION(BlueprintPure, Category = "Skill")
     UGJSkillComponent* GetSkillComponent() const { return SkillComponent; }

@@ -115,6 +115,7 @@ void AGJCharacter::BeginPlay()
             if (PlayerHUDWidgetInstance)
             {
                 PlayerHUDWidgetInstance->AddToViewport();
+                PlayerHUDWidgetInstance->InitializeSkillIcons(this);
             }
         }
     }

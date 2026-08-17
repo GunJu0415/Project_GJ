@@ -1,6 +1,7 @@
 #include "GJPlayerHUDWidget.h"
 #include "Components/ProgressBar.h"
 #include "Components/TextBlock.h"
+#include "GJSkillIconWidget.h"
 
 void UGJPlayerHUDWidget::UpdateHP(float CurrentHP, float MaxHP)
 {
@@ -39,4 +40,11 @@ void UGJPlayerHUDWidget::UpdateEXP(float CurrentEXP, float RequiredEXP, int32 Le
     {
         LevelText->SetText(FText::AsNumber(Level));
     }
+}
+
+void UGJPlayerHUDWidget::InitializeSkillIcons(AGJCharacter* InCharacter)
+{
+    if (SkillIcon1) { SkillIcon1->SetSlotData(0, InCharacter); }
+    if (SkillIcon2) { SkillIcon2->SetSlotData(1, InCharacter); }
+    if (SkillIcon3) { SkillIcon3->SetSlotData(2, InCharacter); }
 }

@@ -6,6 +6,7 @@
 #include "GJCardComponent.generated.h"
 
 class AGJCharacter;
+class UGJCardSelectWidget;
 
 // 컴포넌트가 지금 무엇을 묻고 있는지. 선택지 위젯은 인덱스만 돌려주므로,
 // 그 인덱스가 "뽑힌 카드 목록의 위치"인지 "버릴 무기 슬롯 번호"인지는 이 상태로 판단한다.
@@ -37,6 +38,11 @@ public:
     // 합쳐지는지가 한 곳에서 결정된다.
     UFUNCTION(BlueprintCallable, Category = "Card")
     void SetTagWeightMultiplier(FGameplayTag Tag, float Multiplier);
+
+    // 개발용. 레벨업 없이 카드 화면만 띄워본다(일시정지는 걸지 않는다 - Task 4에서 붙는다).
+    // Exec를 여기 달면 콘솔이 못 찾는다(Task 2에서 확인됨). AGJCharacter에 창구를 만든다.
+    UFUNCTION(BlueprintCallable, Category = "Card")
+    void GJShowCards();
 
 protected:
     virtual void BeginPlay() override;
@@ -76,6 +82,20 @@ protected:
 
     // 태그 배율을 적용한 실효 가중치. 테이블의 Weight는 원본이라 건드리지 않는다.
     float GetEffectiveWeight(const FCardData& Card) const;
+
+    // 선택지 화면 클래스 (WBP_CardSelect). 비어 있으면 카드 선택을 건너뛴다.
+    UPROPERTY(EditDefaultsOnly, Category = "Card")
+    TSubclassOf<UGJCardSelectWidget> CardSelectWidgetClass;
+
+    UPROPERTY()
+    UGJCardSelectWidget* CardSelectWidgetInstance;
+
+    // 선택지를 화면에 띄운다. 위젯 생성이 실패하면 false를 돌려준다 -
+    // 호출자는 이때 일시정지를 걸면 안 된다(화면 없이 게임만 멈추는 소프트락이 된다).
+    bool OpenChoiceUI(const TArray<FGJChoiceEntry>& Entries);
+
+    // 뽑힌 카드 ID 목록을 표시용 구조체로 바꾼다.
+    TArray<FGJChoiceEntry> BuildCardEntries(const TArray<FName>& CardIds) const;
 
     // 이번에 몇 장 뽑을지 정한다. 확률 판정이 들어있어 호출할 때마다 결과가 다를 수 있으므로,
     // 한 번의 선택 화면에는 한 번만 부른다(리롤은 장수를 다시 굴리지 않는다).

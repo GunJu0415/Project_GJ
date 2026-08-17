@@ -984,6 +984,17 @@ void AGJCharacter::GJSetTagWeight(const FString& TagName, float Multiplier)
     UE_LOG(LogTemp, Log, TEXT("GJSetTagWeight: %s -> x%.2f"), *Tag.ToString(), Multiplier);
 }
 
+void AGJCharacter::GJShowCards()
+{
+    if (!CardComponent)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("GJShowCards: CardComponent가 없습니다."));
+        return;
+    }
+
+    CardComponent->GJShowCards();
+}
+
 void AGJCharacter::GJAddBonus(const FString& StatName, float AddValue, float PercentValue)
 {
     FStatModifier Delta;

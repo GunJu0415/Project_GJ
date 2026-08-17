@@ -309,6 +309,10 @@ public:
     UFUNCTION(Exec)
     void GJSetTagWeight(const FString& TagName, float Multiplier);
 
+    // 예) GJShowCards -> 레벨업 없이 카드 화면만 띄운다
+    UFUNCTION(Exec)
+    void GJShowCards();
+
 protected:
 
     UPROPERTY(EditDefaultsOnly, Category = "Weapon")

@@ -1,7 +1,10 @@
 #include "GJCardComponent.h"
 #include "GJCharacter.h"
 #include "GJWeaponBase.h"
+#include "GJCardSelectWidget.h"
 #include "Engine/DataTable.h"
+#include "Blueprint/UserWidget.h"
+#include "GameFramework/PlayerController.h"
 
 UGJCardComponent::UGJCardComponent()
 {
@@ -213,4 +216,84 @@ void UGJCardComponent::GJDrawCards()
 
     UE_LOG(LogTemp, Log, TEXT("GJDrawCards: %d장 -> %s (이미 먹은 고유카드 %d개, 태그 배율: %s)"),
         Drawn.Num(), *Joined, TakenCards.Num(), *TagInfo);
+}
+
+TArray<FGJChoiceEntry> UGJCardComponent::BuildCardEntries(const TArray<FName>& CardIds) const
+{
+    TArray<FGJChoiceEntry> Entries;
+    if (!CardTable)
+    {
+        return Entries;
+    }
+
+    for (const FName& Id : CardIds)
+    {
+        const FCardData* Row = CardTable->FindRow<FCardData>(Id, TEXT("BuildCardEntries"), false);
+        if (!Row)
+        {
+            continue;
+        }
+
+        FGJChoiceEntry Entry;
+        Entry.DisplayName = Row->DisplayName;
+        Entry.Description = Row->Description;
+        Entry.Icon = Row->Icon;
+        Entries.Add(Entry);
+    }
+
+    return Entries;
+}
+
+bool UGJCardComponent::OpenChoiceUI(const TArray<FGJChoiceEntry>& Entries)
+{
+    AGJCharacter* Character = GetOwnerCharacter();
+    if (!Character)
+    {
+        return false;
+    }
+
+    APlayerController* PC = Cast<APlayerController>(Character->GetController());
+    if (!PC)
+    {
+        return false;
+    }
+
+    if (!CardSelectWidgetInstance)
+    {
+        if (!CardSelectWidgetClass)
+        {
+            UE_LOG(LogTemp, Warning, TEXT("GJCardComponent: CardSelectWidgetClass가 비어있어 카드 선택을 건너뜁니다."));
+            return false;
+        }
+        CardSelectWidgetInstance = CreateWidget<UGJCardSelectWidget>(PC, CardSelectWidgetClass);
+        if (!CardSelectWidgetInstance)
+        {
+            UE_LOG(LogTemp, Warning, TEXT("GJCardComponent: 카드 선택 위젯 생성에 실패했습니다."));
+            return false;
+        }
+    }
+
+    CardSelectWidgetInstance->ShowChoices(Entries);
+
+    if (!CardSelectWidgetInstance->IsInViewport())
+    {
+        CardSelectWidgetInstance->AddToViewport();
+    }
+
+    return true;
+}
+
+void UGJCardComponent::GJShowCards()
+{
+    const TArray<FName> Drawn = DrawCards(GetDrawCount());
+    if (Drawn.Num() == 0)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("GJShowCards: 뽑을 수 있는 카드가 없습니다."));
+        return;
+    }
+
+    if (!OpenChoiceUI(BuildCardEntries(Drawn)))
+    {
+        UE_LOG(LogTemp, Warning, TEXT("GJShowCards: 화면을 띄우지 못했습니다."));
+    }
 }

@@ -9,6 +9,7 @@
 // 여기서 GJWeaponBase.h를 include하면 GJWeaponBase.h가 GJGameTypes.h를 다시 include해서
 // 순환이 된다.
 class AGJWeaponBase;
+class AGJProjectile;
 
 // -----------------------------------------
 // 캐릭터 스탯 데이터 테이블 구조체
@@ -127,6 +128,84 @@ struct FStatModifier
     // 증가율 (0.15 = +15%)
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Modifier")
     FStatValues Percent;
+};
+
+// -----------------------------------------
+// 스킬 (액티브 스킬)
+// -----------------------------------------
+
+UENUM(BlueprintType)
+enum class ESkillType : uint8
+{
+    // 구체를 발사한다
+    Projectile UMETA(DisplayName = "발사형"),
+    // 미구현 - 장판/오라 같은 지속 효과. 고르면 경고만 찍힌다
+    Persistent UMETA(DisplayName = "지속형 (미구현)")
+};
+
+// 스킬 하나의 정의. 행 이름이 곧 스킬 ID다.
+USTRUCT(BlueprintType)
+struct FSkillData : public FTableRowBase
+{
+    GENERATED_BODY()
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skill")
+    FText DisplayName;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skill")
+    FText Description;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skill")
+    UTexture2D* Icon = nullptr;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skill")
+    ESkillType SkillType = ESkillType::Projectile;
+
+    // 떼는 순간 고정 소비. 차징률에 비례시키지 않는 이유는 약한 구체 연타가 최적해가 되는
+    // 균형을 잡으려면 쿨타임까지 같이 조정해야 해서 변수가 둘로 늘기 때문이다.
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skill")
+    float MPCost = 10.f;
+
+    // 떼는 순간부터 시작 (초)
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skill")
+    float Cooldown = 3.f;
+
+    // 차징 배율이 곱해지기 전 기본 데미지
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skill")
+    float BaseDamage = 40.f;
+
+    // 이만큼 날아가면 자동 소멸
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skill")
+    float Range = 2000.f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skill")
+    float ProjectileSpeed = 1500.f;
+
+    // 최대 차징까지 걸리는 시간. 0이면 차징이 없고 누르는 순간 발사된다.
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skill")
+    float ChargeTime = 1.5f;
+
+    // 최대 차징 시 크기와 데미지에 함께 곱해지는 배율
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skill")
+    float MaxChargeMultiplier = 2.f;
+
+    // 구체 기본 크기 배율 (BP에서 만든 크기 1.0 기준).
+    // 반지름(cm)이 아닌 이유: cm로 주면 콜리전은 맞춰도 메시는 원본 크기를 알아야 비율이 나온다.
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skill")
+    float BaseScale = 1.f;
+
+    // 추가로 관통하는 적 수. 0=1명, 1=2명, -1=무한.
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skill")
+    int32 PierceCount = 0;
+
+    // 카드 태그와 같은 축(Tree.Fire 등). 지금은 표시용이고, 나중에 스킬을 얻으면 같은 트리
+    // 카드를 밀어주는 연결점이 된다.
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skill")
+    FGameplayTagContainer SkillTags;
+
+    // 구체 비주얼. 비어 있으면 컴포넌트의 DefaultProjectileClass를 쓴다.
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skill")
+    TSubclassOf<AGJProjectile> ProjectileClass;
 };
 
 // -----------------------------------------

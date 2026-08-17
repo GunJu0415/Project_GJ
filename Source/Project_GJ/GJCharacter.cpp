@@ -16,6 +16,7 @@
 #include "GJPlayerHUDWidget.h"
 #include "GJInventoryComponent.h"
 #include "GJCardComponent.h"
+#include "GJSkillComponent.h"
 #include "GJInteractable.h"
 #include "GJInventoryWidget.h"
 #include "Kismet/GameplayStatics.h"
@@ -45,6 +46,7 @@ AGJCharacter::AGJCharacter()
 
     InventoryComponent = CreateDefaultSubobject<UGJInventoryComponent>(TEXT("InventoryComponent"));
     CardComponent = CreateDefaultSubobject<UGJCardComponent>(TEXT("CardComponent"));
+    SkillComponent = CreateDefaultSubobject<UGJSkillComponent>(TEXT("SkillComponent"));
 
     // 무기 슬롯 2칸(0번/1번) - 처음엔 둘 다 빈 슬롯
     WeaponSlots.Init(nullptr, 2);
@@ -373,6 +375,28 @@ void AGJCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCompone
         if (WeaponSlot2Action)
         {
             EnhancedInput->BindAction(WeaponSlot2Action, ETriggerEvent::Started, this, &AGJCharacter::SwapToWeaponSlot2);
+        }
+
+        // 스킬은 누름과 뗌을 둘 다 받아야 차징이 성립한다.
+        // Canceled도 Completed와 같이 묶는다 - 입력이 취소로 끝나면 Completed가 안 와서
+        // 차징이 눌린 채 굳는다(공격 입력에서 겪은 문제와 같은 종류다).
+        if (Skill1Action)
+        {
+            EnhancedInput->BindAction(Skill1Action, ETriggerEvent::Started, this, &AGJCharacter::Skill1Pressed);
+            EnhancedInput->BindAction(Skill1Action, ETriggerEvent::Completed, this, &AGJCharacter::Skill1Released);
+            EnhancedInput->BindAction(Skill1Action, ETriggerEvent::Canceled, this, &AGJCharacter::Skill1Released);
+        }
+        if (Skill2Action)
+        {
+            EnhancedInput->BindAction(Skill2Action, ETriggerEvent::Started, this, &AGJCharacter::Skill2Pressed);
+            EnhancedInput->BindAction(Skill2Action, ETriggerEvent::Completed, this, &AGJCharacter::Skill2Released);
+            EnhancedInput->BindAction(Skill2Action, ETriggerEvent::Canceled, this, &AGJCharacter::Skill2Released);
+        }
+        if (Skill3Action)
+        {
+            EnhancedInput->BindAction(Skill3Action, ETriggerEvent::Started, this, &AGJCharacter::Skill3Pressed);
+            EnhancedInput->BindAction(Skill3Action, ETriggerEvent::Completed, this, &AGJCharacter::Skill3Released);
+            EnhancedInput->BindAction(Skill3Action, ETriggerEvent::Canceled, this, &AGJCharacter::Skill3Released);
         }
     }
 }
@@ -995,6 +1019,47 @@ void AGJCharacter::GJShowCards()
     }
 
     CardComponent->GJShowCards();
+}
+
+void AGJCharacter::Skill1Pressed()  { if (SkillComponent) SkillComponent->OnSkillPressed(0); }
+void AGJCharacter::Skill1Released() { if (SkillComponent) SkillComponent->OnSkillReleased(0); }
+void AGJCharacter::Skill2Pressed()  { if (SkillComponent) SkillComponent->OnSkillPressed(1); }
+void AGJCharacter::Skill2Released() { if (SkillComponent) SkillComponent->OnSkillReleased(1); }
+void AGJCharacter::Skill3Pressed()  { if (SkillComponent) SkillComponent->OnSkillPressed(2); }
+void AGJCharacter::Skill3Released() { if (SkillComponent) SkillComponent->OnSkillReleased(2); }
+
+void AGJCharacter::GJEquipSkill(const FString& SkillId, int32 SlotIndex)
+{
+    if (!SkillComponent)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("GJEquipSkill: SkillComponent가 없습니다."));
+        return;
+    }
+
+    const FName Id(*SkillId);
+
+    if (SlotIndex >= 0)
+    {
+        SkillComponent->EquipSkillInSlot(SlotIndex, Id);
+        return;
+    }
+
+    if (!SkillComponent->EquipSkill(Id))
+    {
+        UE_LOG(LogTemp, Warning,
+            TEXT("GJEquipSkill: 빈 슬롯이 없습니다. 슬롯 번호를 지정하세요 (예: GJEquipSkill %s 0)."), *SkillId);
+    }
+}
+
+void AGJCharacter::GJSkillInfo()
+{
+    if (!SkillComponent)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("GJSkillInfo: SkillComponent가 없습니다."));
+        return;
+    }
+
+    SkillComponent->LogSkillInfo();
 }
 
 bool AGJCharacter::ConsumeMP(float Amount)

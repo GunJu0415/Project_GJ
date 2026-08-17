@@ -22,6 +22,7 @@ class UUserWidget;
 class UGJPlayerHUDWidget;
 class UGJInventoryComponent;
 class UGJCardComponent;
+class UGJSkillComponent;
 class UGJInventoryWidget;
 
 enum class EDodgeType
@@ -326,6 +327,15 @@ public:
     UFUNCTION(Exec)
     void GJShowCards();
 
+    // 예) GJEquipSkill Skill_Fireball     -> 첫 빈 슬롯에 장착
+    //     GJEquipSkill Skill_Fireball 1   -> 슬롯 1(Q)에 강제 장착
+    UFUNCTION(Exec)
+    void GJEquipSkill(const FString& SkillId, int32 SlotIndex = -1);
+
+    // 슬롯별 장착 스킬, 쿨타임 잔량, MP, 차징 상태를 로그로 출력
+    UFUNCTION(Exec)
+    void GJSkillInfo();
+
 protected:
 
     UPROPERTY(EditDefaultsOnly, Category = "Weapon")
@@ -446,6 +456,28 @@ protected:
     // 레벨업 카드 선택 (OnLevelUp을 구독해서 알아서 동작함 - 캐릭터는 카드를 모른다)
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Card")
     UGJCardComponent* CardComponent;
+
+    // 액티브 스킬 (슬롯/쿨타임/차징 전부 여기 - 캐릭터는 입력만 넘긴다)
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Skill")
+    UGJSkillComponent* SkillComponent;
+
+    // 스킬 입력 액션. BP_GJCharacter 디테일 패널에서 IA_Skill1/2/3을 할당해야 동작한다.
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input")
+    UInputAction* Skill1Action;
+
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input")
+    UInputAction* Skill2Action;
+
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input")
+    UInputAction* Skill3Action;
+
+    // 슬롯 번호를 넘기기만 하는 얇은 래퍼. BindAction이 인자 있는 함수를 못 받아서 필요하다.
+    void Skill1Pressed();
+    void Skill1Released();
+    void Skill2Pressed();
+    void Skill2Released();
+    void Skill3Pressed();
+    void Skill3Released();
 
     // 인벤토리 그리드 UI. BP_GJCharacter 디테일 패널에서 WBP_Inventory 같은 위젯 블루프린트를 할당해야 함
     UPROPERTY(EditDefaultsOnly, Category = "Inventory")

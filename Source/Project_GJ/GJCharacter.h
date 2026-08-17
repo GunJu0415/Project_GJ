@@ -337,6 +337,10 @@ public:
     UFUNCTION(Exec)
     void GJSkillInfo();
 
+    // 카드 컴포넌트가 능력 카드를 적용할 때 쓴다.
+    UFUNCTION(BlueprintPure, Category = "Skill")
+    UGJSkillComponent* GetSkillComponent() const { return SkillComponent; }
+
 protected:
 
     UPROPERTY(EditDefaultsOnly, Category = "Weapon")

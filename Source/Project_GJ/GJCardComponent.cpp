@@ -2,6 +2,7 @@
 #include "GJCharacter.h"
 #include "GJWeaponBase.h"
 #include "GJCardSelectWidget.h"
+#include "GJSkillComponent.h"
 #include "Engine/DataTable.h"
 #include "Blueprint/UserWidget.h"
 #include "GameFramework/PlayerController.h"
@@ -144,8 +145,18 @@ TArray<FName> UGJCardComponent::DrawCards(int32 Count) const
         {
             continue;
         }
-        // Ability는 거르지 않는다. 테이블에 있으면 UI에는 보이고, 고르면 적용 단계에서
-        // 경고가 찍힌다(M2.7 작업 시 바로 확인할 수 있게).
+        // 스킬 ID가 비었거나 테이블에 없는 능력 카드는 골라도 아무 일이 없다.
+        // WeaponClass가 빈 무기 카드를 거르는 것과 같은 이유다.
+        // 슬롯이 꽉 찼다는 이유로는 거르지 않는다 - 그 경우 카드를 고른 뒤 무엇을 버릴지 정한다.
+        if (Row->EffectType == ECardEffectType::Ability)
+        {
+            const AGJCharacter* OwnerChar = GetOwnerCharacter();
+            const UGJSkillComponent* Skills = OwnerChar ? OwnerChar->GetSkillComponent() : nullptr;
+            if (!Skills || !Skills->FindSkill(Row->SkillId))
+            {
+                continue;
+            }
+        }
 
         Candidates.Add(RowName);
         Weights.Add(GetEffectiveWeight(*Row));
@@ -499,11 +510,60 @@ bool UGJCardComponent::ApplyCard(FName CardId)
 
     case ECardEffectType::Ability:
     {
-        // 조용히 무시하면 데이터 테이블에 능력 카드를 넣어두고 "왜 안 먹지?"로 헤매게 된다.
-        UE_LOG(LogTemp, Warning,
-            TEXT("ApplyCard: 능력 카드 '%s'는 아직 미구현입니다 (스킬 시스템 M2.7 필요)."),
-            *CardId.ToString());
-        break;
+        UGJSkillComponent* Skills = Character->GetSkillComponent();
+        if (!Skills)
+        {
+            UE_LOG(LogTemp, Warning, TEXT("ApplyCard: SkillComponent가 없어 '%s'를 적용할 수 없습니다."), *CardId.ToString());
+            break;
+        }
+
+        // 빈 슬롯이 있으면 여기서 끝난다.
+        if (Skills->EquipSkill(Row->SkillId))
+        {
+            break;
+        }
+
+        // 슬롯이 꽉 찼다. 어느 스킬을 버릴지 묻는다. 무기 교체와 같은 위젯을 쓴다 -
+        // 위젯이 FGJChoiceEntry를 받아 인덱스만 돌려주기 때문에 전용 화면이 필요 없다.
+        const TCHAR* SlotKeys[GJ_SKILL_SLOT_COUNT] = { TEXT("우클릭"), TEXT("Q"), TEXT("F") };
+
+        TArray<FGJChoiceEntry> Entries;
+        for (int32 SlotIndex = 0; SlotIndex < GJ_SKILL_SLOT_COUNT; SlotIndex++)
+        {
+            const FName EquippedId = Skills->GetSkillInSlot(SlotIndex);
+            const FSkillData* Equipped = Skills->FindSkill(EquippedId);
+
+            FGJChoiceEntry Entry;
+            Entry.DisplayName = Equipped ? Equipped->DisplayName : FText::FromName(EquippedId);
+            // 슬롯 선택이 곧 키 선택이다. 번호만 보여주면 어느 손가락이 바뀌는지 알 수 없다.
+            Entry.Description = FText::Format(
+                NSLOCTEXT("GJ", "ReplaceSkillSlot", "{0} 자리를 버리고 교체한다"),
+                FText::FromString(SlotKeys[SlotIndex]));
+            Entry.Icon = Equipped ? Equipped->Icon : nullptr;
+            Entries.Add(Entry);
+        }
+
+        // 화면을 못 띄우면 카드 3장이 뜬 채 모드만 바뀌어, 카드를 누르는 순간 그 인덱스가
+        // 스킬 슬롯으로 해석된다. 그 상태에 빠지느니 슬롯 0을 덮어쓰는 편이 낫다.
+        if (!OpenChoiceUI(Entries))
+        {
+            UE_LOG(LogTemp, Warning,
+                TEXT("ApplyCard: 스킬 교체 화면을 띄우지 못해 슬롯 0을 덮어씁니다 (%s)."), *CardId.ToString());
+            Skills->EquipSkillInSlot(0, Row->SkillId);
+            break;
+        }
+
+        PendingSkillId = Row->SkillId;
+        CurrentMode = EGJChoiceMode::SkillReplace;
+
+        // 스택 불가 카드는 여기서 기록한다. 교체는 두 단계라 아래의 공통 기록 지점
+        // (return true 직전)을 지나가지 않는다.
+        if (!Row->bStackable)
+        {
+            TakenCards.Add(CardId);
+        }
+
+        return false;  // 아직 안 끝났다 - 대기열을 줄이면 안 된다
     }
     }
 
@@ -549,6 +609,19 @@ void UGJCardComponent::HandleChoiceSelected(int32 ChoiceIndex)
             Character->ReplaceWeaponInSlot(ChoiceIndex, PendingWeapon);
             PendingWeapon = nullptr;
         }
+
+        PendingChoices--;
+        ShowNextChoice();
+        return;
+    }
+
+    if (CurrentMode == EGJChoiceMode::SkillReplace)
+    {
+        if (UGJSkillComponent* Skills = Character->GetSkillComponent())
+        {
+            Skills->EquipSkillInSlot(ChoiceIndex, PendingSkillId);
+        }
+        PendingSkillId = NAME_None;
 
         PendingChoices--;
         ShowNextChoice();

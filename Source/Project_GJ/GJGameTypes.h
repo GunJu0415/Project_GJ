@@ -249,6 +249,10 @@ struct FCardData : public FTableRowBase
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Card")
     TSubclassOf<AGJWeaponBase> WeaponClass;
 
+    // EffectType == Ability일 때만 쓰인다. DT_SkillData의 행 이름.
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Card")
+    FName SkillId;
+
     // 이 카드가 속한 트리/계열 (예: Tree.Fire, Weapon.Gun). 여러 개 달아도 된다.
     // 플레이어가 타고 있는 트리의 카드가 더 자주 뜨게 하는 데 쓰인다
     // (UGJCardComponent::TagWeightMultipliers).

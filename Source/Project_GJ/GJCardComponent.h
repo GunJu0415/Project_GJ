@@ -14,8 +14,9 @@ class UGJCardSelectWidget;
 enum class EGJChoiceMode : uint8
 {
     None,
-    Card,
-    WeaponReplace
+    Card,           // 인덱스 = 뽑힌 카드 목록의 위치
+    WeaponReplace,  // 인덱스 = 버릴 무기 슬롯 번호
+    SkillReplace    // 인덱스 = 버릴 스킬 슬롯 번호
 };
 
 UCLASS(ClassGroup = (Custom), meta = (BlueprintSpawnableComponent))
@@ -94,6 +95,9 @@ protected:
     // WeaponReplace 모드일 때 지급 대기 중인 무기 (이미 월드에 스폰된 상태)
     UPROPERTY()
     AGJWeaponBase* PendingWeapon;
+
+    // SkillReplace 모드일 때 장착 대기 중인 스킬 ID
+    FName PendingSkillId;
 
     UFUNCTION()
     void HandleLevelUp(int32 NewLevel);

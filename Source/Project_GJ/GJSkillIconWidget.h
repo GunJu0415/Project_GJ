@@ -64,8 +64,10 @@ protected:
 
     // MP가 모자랄 때의 색. 회색이 아니라 파랑인 이유는 "쿨타임이 아니라 마나 문제"를
     // 색으로 구분하기 위해서다.
+    // 틴트는 곱셈이라 채널을 깎을 수만 있다. B를 1.0으로 두면 파랑을 "그대로 두는" 것이라
+    // R/G만 깎여 파랗다기보다 어두워 보인다. 1을 넘겨야 파랑이 실제로 더해진다.
     UPROPERTY(EditDefaultsOnly, Category = "Skill")
-    FLinearColor UnaffordableTint = FLinearColor(0.35f, 0.5f, 1.0f, 1.0f);
+    FLinearColor UnaffordableTint = FLinearColor(0.30f, 0.55f, 1.5f, 1.0f);
 
     UPROPERTY()
     UMaterialInstanceDynamic* CooldownMID;

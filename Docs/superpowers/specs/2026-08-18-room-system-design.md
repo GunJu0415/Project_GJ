@@ -252,6 +252,28 @@ A 검증에는 방 1개면 충분하다. 나머지 모양은 B에서 늘린다.
 6. 다시 플레이하면 **구성이 달라진다**
 7. `MinEnemies=0`인 행을 쓰면 **시작부터 열려 있다**
 
+## 이후 작업 (이 문서 범위 밖, 결정만 기록)
+
+Task B(절차적 배치)와 Task C(스테이지 진행)는 각자 별도의 스펙과 계획으로 다룬다. 그 외에 A 설계 도중 확정된 것:
+
+**A2. 습득 아이템 종류** — 회복방·보급방(아이작의 악마방)이 요구된 결과다. **방 클래스는 늘어나지 않는다.** 이 방들은 `AGJCombatRoom` + 적 0마리 + 다른 `ItemPool`로 성립하고, 늘어나는 것은 아이템 클래스뿐이다.
+
+```
+AGJItemBase (기존, abstract)
+ ├─ AGJItem        (기존)  인벤토리에 넣는다
+ ├─ AGJHealItem    (신규)  즉시 회복 — 기존 ApplyConsumableEffect 재사용
+ └─ AGJPricedItem  (신규, abstract)  대가를 치러야 준다
+      │   virtual bool CanAfford(AGJCharacter*) const
+      │   virtual void PayPrice(AGJCharacter*)
+      └─ AGJDevilItem   최대 HP로 지불 (화폐 불필요)
+```
+
+지불에 성공하면 `GrantedItemClass`를 제자리에 스폰하고 자기는 사라진다 — 상자가 아이템을 뿌리는 것과 같은 수법이라 습득 경로가 새로 안 생긴다.
+
+A2는 **A와 의존이 없다.** `AGJHealItem`은 방 없이 레벨에 떨어뜨려도 검증된다. 그래서 같은 스펙에 묶지 않는다.
+
+**상점은 화폐 시스템이 선행한다.** 그리고 사용자 결정으로 **아이템을 바닥에 까는 방식이 아니라 상점 NPC와 상호작용하는 구조**로 간다. 따라서 위 트리의 `AGJShopItem`은 만들지 않고, 재고 목록을 든 `AGJShopNPC`(`IGJInteractable`)가 대신 들어간다. 화폐 설계 시 함께 다룬다 — **골드가 런을 넘어 남는지**가 영구 강화(M6)와 얽히는 갈림길이다.
+
 ## 미결 사항
 
-없음. Task B(절차적 배치)와 Task C(스테이지 진행)는 각자 별도의 스펙과 계획으로 다룬다.
+없음.

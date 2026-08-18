@@ -263,15 +263,16 @@ UGJCombatStatics (UBlueprintFunctionLibrary) — 데미지 공식 단일 소스
 
 `Quantity`(기본 1)는 이 액터 하나를 주웠을 때 실제로 지급되는 개수. BP로 뺄 때는 `AGJItem`을 부모로 `BP_Item_XXX`를 만들어 메시/ItemDataHandle/Quantity만 채우면 됨.
 
-### 3.2 인벤토리 UI (`UGJInventoryWidget` / `UGJInventorySlotWidget` / `UGJWeaponSlotWidget`)
+### 3.2 인벤토리 UI (`UGJInventoryWidget` / `UGJInventorySlotWidget` / `UGJWeaponSlotWidget` / `UGJSkillSlotWidget`)
 
-인벤토리 창은 **1페이지(아이템 그리드)** + **2페이지(무기 슬롯 0/1번)**를 `WidgetSwitcher`로 감싸고 탭 버튼(`Tab1Button`/`Tab2Button`)으로 전환하는 구조. 페이지 레이아웃 자체는 `WBP_Inventory`에서 구성(UMG MCP 툴로 작업함).
+인벤토리 창은 **1페이지(아이템 그리드)** + **2페이지(무기 슬롯 0/1번)** + **3페이지(스킬 슬롯 0/1/2번)**를 `WidgetSwitcher`로 감싸고 탭 버튼(`Tab1Button`/`Tab2Button`/`Tab3Button`)으로 전환하는 구조. 페이지 레이아웃 자체는 `WBP_Inventory`에서 구성(UMG MCP 툴로 작업함). 각 탭 버튼의 `OnClicked`가 `SetActiveWidgetIndex(PageSwitcher, N)`에 연결된 이벤트 그래프 노드 세 벌이 전부다.
 
 | 클래스 | 역할 |
 |---|---|
 | `UGJInventorySlotWidget` | 그리드 한 칸. `SetSlotData(index, inventoryComponent)`로 세팅. `BindWidget: IconImage`, `BindWidgetOptional: QuantityText`(스택 1개면 자동 숨김). 클릭+드래그로 `OwningInventory->SwapSlots()`, 더블클릭으로 `OwningInventory->UseItem()` |
-| `UGJInventoryWidget` | 인벤토리 창 전체. `InitializeInventory(inventoryComponent)`를 열 때 1회 호출 — `RefreshGrid()`(아이템 그리드, `OnInventoryChanged` 구독)와 `RefreshWeaponSlots()`(무기 페이지 2칸, 캐릭터의 `OnWeaponSlotsChanged` 구독)를 둘 다 갱신함. `BindWidget: GridPanel`, `BindWidgetOptional: WeaponSlotWidget1/WeaponSlotWidget2` |
+| `UGJInventoryWidget` | 인벤토리 창 전체. `InitializeInventory(inventoryComponent)`를 열 때 1회 호출 — `RefreshGrid()`(아이템 그리드, `OnInventoryChanged` 구독)와 `RefreshWeaponSlots()`(무기 페이지 2칸, 캐릭터의 `OnWeaponSlotsChanged` 구독)를 둘 다 갱신함. `BindWidget: GridPanel`, `BindWidgetOptional: WeaponSlotWidget1/2`, `SkillSlotWidget1/2/3` |
 | `UGJWeaponSlotWidget` | 무기 페이지 한 칸(0번/1번). `SetSlotData(slotIndex, character)`로 세팅. `bIsActiveSlot`(BlueprintReadOnly)로 지금 손에 든 무기인지 표시 가능. 순수 클릭(드래그 없음)이면 `SwapToWeaponSlot()`으로 장착 전환, 드래그해서 다른 칸에 놓으면 `SwapWeaponSlots()`으로 자리만 교체(장착 상태 유지) — 클릭/드래그 구분은 `NativeOnMouseButtonDown`에서 `DetectDrag`만 걸고, 실제 교체 액션은 드래그가 감지 안 됐을 때만 `NativeOnMouseButtonUp`에서 수행하는 방식으로 함 |
+| `UGJSkillSlotWidget` | 스킬 페이지 한 칸(0/1/2 = 우클릭/Q/F). `SetSlotData(slotIndex, character)`로 세팅. **클릭에는 아무 동작도 없다** — 무기 칸은 클릭이 장착이지만 스킬은 세 개가 항상 활성이라 "장착"이라는 개념이 없다. 드래그해서 다른 칸에 놓으면 `SwapSkillSlots()`로 **쿨타임까지 함께** 자리를 바꾼다(= 어느 키에 둘지를 바꾼다). 드롭 처리는 `SetSlotData`를 직접 부르지 않고 `SwapSkillSlots`만 부른다 — 갱신은 `OnSkillSlotsChanged` 방송을 `UGJInventoryWidget`이 받아서 하는데, 여기서 직접 그리면 도착 칸만 갱신되고 **출발 칸이 남는다** |
 
 **Tab으로 닫기 — 포커스에 의존하지 않는 전역 리스너**: `UGJInventoryWidget`은 `NativeOnInitialized()`에서 `FSlateApplication::Get().OnApplicationPreInputKeyDownListener()`에 핸들러를 등록해서 Tab 키를 감지함(포커스가 어디에 있든 항상 통지받음). 처음엔 `NativeOnPreviewKeyDown`(포커스 기반)으로 했었는데, 탭 버튼처럼 포커스를 받을 수 있는 자식 위젯이 있으면 인벤토리 바깥 클릭으로 포커스가 위젯 트리 밖으로 나갔을 때 Tab이 아예 안 들어오는 문제가 있어서 바꿈. 리스너 해제는 `NativeDestruct()`가 아니라 **`BeginDestroy()`**(UObject 레벨)에서 함 — `NativeDestruct`는 위젯이 진짜로 파괴될 때가 아니라 `RemoveFromParent()`(=닫을 때)마다 불려서, 거기서 해제하면 처음 닫을 때 리스너가 없어지고 재등록도 안 돼(`NativeOnInitialized`는 생성 시 1회뿐) 두 번째 닫기부터 Tab이 안 먹히는 버그가 있었음.
 
@@ -515,7 +516,53 @@ BT 트리 구조 자체(Selector로 IsInAttackRange 분기해서 MoveTo vs Melee
 
 **`FireSkill`은 구체를 먼저 확보한 뒤에 MP를 깎는다.** 순서를 뒤집으면 풀이 비었을 때 MP만 사라진다.
 
-**개발용 콘솔 명령**: `GJEquipSkill <스킬ID> [슬롯]`(카드 없이 장착), `GJSkillInfo`(슬롯별 스킬·쿨타임 잔량·MP·차징 상태). 카드 명령과 마찬가지로 **`AGJCharacter`의 `UFUNCTION(Exec)`**이고 몸통은 컴포넌트에 있다.
+### 발사 위치는 총구 소켓 하나로 모은다
+
+`GetMuzzleComponent(OutSocket)` / `GetMuzzleLocation()`이 유일한 출처다. 무기에 `MuzzleSocket`이 있으면 거기(총알과 같은 자리), 없거나 맨손이면 캐릭터 기준 `MuzzleOffset`(전방 60 / 상방 40)으로 떨어진다. **스킬은 맨손이어도 나가야 하므로 폴백이 필수다.**
+
+발사(`FireSkill`)와 차징 미리보기가 **반드시 같은 함수를 쓴다.** 갈라 놓으면 손을 떼는 순간 구체가 순간이동한다 — 실제로 미리보기만 소켓으로 옮겼다가 그 증상이 나왔다.
+
+### UI — 갱신 경로가 둘로 나뉜다
+
+| 무엇 | 경로 | 이유 |
+|---|---|---|
+| 슬롯 내용 (어느 칸에 무슨 스킬) | `OnSkillSlotsChanged` 델리게이트 | 가끔 바뀐다 |
+| 쿨타임 비율 | 위젯 `NativeTick`에서 `GetCooldownRatio(Slot)` 폴링 | **매 프레임 바뀐다.** 델리게이트에 태우면 방송만 하다 끝난다 |
+
+**위젯이 틱하는 것은 위 "틱을 쓰지 않는다"와 충돌하지 않는다.** 컴포넌트는 여전히 시각 비교만 하고 아무것도 안 깎는다. 물어보는 쪽이 UI일 뿐이고, 아이콘 3개짜리라 비용도 없다.
+
+HUD 아이콘과 인벤토리 칸이 **같은 델리게이트를 듣는다.** 인벤토리에서 드래그로 자리를 바꾸면 창을 닫았을 때 HUD도 이미 바뀌어 있다.
+
+**`GetSlotKeyLabel(Slot)`이 키 이름의 단일 출처다.** 원래 `LogSkillInfo`와 카드 교체 화면에 문자열이 따로 하드코딩돼 있었는데 UI 두 개가 붙으면서 네 곳이 될 참이었다. `IMC_GJ` 매핑을 바꾸면 이 함수만 고친다.
+
+### `SwapSkillSlots`와 `EquipSkillInSlot`은 다른 동작이다
+
+| 함수 | 쿨타임 | 왜 |
+|---|---|---|
+| `SwapSkillSlots(A, B)` (인벤토리 드래그) | **같이 옮긴다** | 안 그러면 스킬을 쓰고 자리를 바꾸는 것이 쿨타임 초기화 수단이 된다 |
+| `EquipSkillInSlot(Slot, Id)` (카드로 획득) | **0으로 둔다** | 없던 스킬이 새로 들어오는 것이라 물려받을 쿨타임이 없다. 교체가 손해면 안 된다 |
+
+### 차징 구체 (미리보기)
+
+차징 중 총구에 구체가 나타나 발사될 크기까지 커진다.
+
+- **메시는 `FSkillData`가 아니라 `ProjectileClass` CDO에서 읽는다.** 미리보기와 실제로 날아가는 구체가 자동으로 같아진다. 데이터를 따로 두면 언젠가 어긋나고, 고칠 때까지 아무도 모른다
+- **크기는 발사와 같은 공식**(`1 + (MaxChargeMultiplier-1) × 비율`)에 **발사체 메시의 상대 스케일까지 곱한다.** 발사체는 액터 스케일 × 메시 상대 스케일로 보이는데(`BP_GJSkillProjectile`은 메시가 3배) 미리보기는 컴포넌트 하나뿐이라 그걸 직접 곱해야 크기가 맞는다
+- **메시 컴포넌트는 캐릭터가 소유한다.** `UGJSkillComponent`는 `UActorComponent`라 트랜스폼이 없어 자식 메시를 못 단다. 켜고 끄고 키우는 것은 전부 스킬 컴포넌트가 하므로 **캐릭터는 여전히 스킬을 모른다**
+- **총구 소켓에 어태치**한다. 조준으로 무기가 돌면 구체도 따라가고, 매 프레임 월드 좌표를 다시 찍는 것보다 싸다
+- **틱은 차징 중에만 켠다.** `bCanEverTick = true` + `bStartWithTickEnabled = false`로 두고 `ShowChargeOrb`에서만 켠다 — **`bCanEverTick`이 false면 `SetComponentTickEnabled`가 아무 효과도 없다**
+- **숨기는 곳은 `CancelCharge` 하나뿐이다.** 회피·인벤토리·카드 화면·사망·정상 발사가 전부 그 함수를 지나가므로 경로마다 따로 챙길 필요가 없다
+- 메시를 못 찾으면 **연출만 건너뛰고** 차징과 발사는 정상 동작한다. 시각 요소가 게임플레이를 막으면 안 된다
+
+### 안 나갈 때는 이유를 남긴다
+
+`OnSkillPressed`는 조용히 `return`하는 경로가 여럿이다(쿨타임, MP 부족, 빈 슬롯, 이미 차징 중, 잘못된 슬롯). 로그가 없으면 **"눌러도 아무 일도 안 일어남"으로만 보여서** 데이터를 건드린 뒤 안 나가기 시작했을 때 원인을 찾는 데 한참 걸린다. 실제로 그렇게 시간을 썼다.
+
+지금은 쿨타임·MP 부족·빈 슬롯이 `[SKILL] 발동 안 됨: ...`을 남긴다. **`Log` 레벨에 0.5초 간격**이다 — 쿨타임 중 입력은 정상 플레이라 경고로 띄우면 시끄럽고, 누르고 있으면 매 프레임 들어온다.
+
+**개발용 콘솔 명령**: `GJEquipSkill <스킬ID> [슬롯]`(카드 없이 장착), `GJSkillInfo`(슬롯별 스킬·쿨타임 잔량·MP·차징 상태), `GJSwapSkills <A> <B>`(두 슬롯을 쿨타임까지 맞바꿈). 카드 명령과 마찬가지로 **`AGJCharacter`의 `UFUNCTION(Exec)`**이고 몸통은 컴포넌트에 있다.
+
+> 쿨타임이 옮겨졌는지 콘솔로 확인할 때는 **`cooldown`을 30초쯤으로 잠깐 올려놓고** 하라. 기본 3초로는 발사하고 Output Log 창으로 옮겨가 타이핑하는 데 그보다 오래 걸려서, 교환 시점엔 이미 정상 만료돼 있다. 그러면 `쿨 0.0s`가 나오는데 **버그인지 정상 만료인지 구분할 수 없다.**
 
 ---
 
@@ -526,15 +573,23 @@ BT 트리 구조 자체(Selector로 IsInAttackRange 분기해서 MoveTo vs Melee
 | 클래스 | 파생 WBP | BindWidget 이름 | 갱신 함수 | 위치/방식 |
 |---|---|---|---|---|
 | `UGJHealthBarWidget` | `WBP_EnemyHealthBar` | `HealthProgressBar` | `UpdateHealth(Current, Max)` | 적 머리 위, `UWidgetComponent` (Screen space) |
-| `UGJPlayerHUDWidget` | `WBP_PlayerHUD` | `HPBar`, `MPBar` (strict) / `EXPBar`, `LevelText` (**Optional**) | `UpdateHP(Current,Max)` / `UpdateMP(Current,Max)` / `UpdateEXP(Current,Required,Level)` | 좌상단, `AddToViewport()` |
+| `UGJPlayerHUDWidget` | `WBP_PlayerHUD` | `HPBar`, `MPBar` (strict) / `EXPBar`, `LevelText`, `SkillIcon1/2/3` (**Optional**) | `UpdateHP` / `UpdateMP` / `UpdateEXP(Current,Required,Level)` / `InitializeSkillIcons(Character)` | 좌상단, `AddToViewport()` |
 | `UGJCardSelectWidget` | `WBP_CardSelect` | `CardContainer` (HorizontalBox, strict) | `ShowChoices(TArray<FGJChoiceEntry>)` → `OnChoiceSelected(int32)` | 레벨업 시 중앙, 일시정지 모달 |
 | `UGJCardWidget` | `WBP_Card` | `IconImage`, `NameText`, `DescText`, `SelectButton` (전부 strict) | `Setup(Index, Entry)` → `OnCardClicked(int32)` | `CardContainer`에 런타임 생성 |
+| `UGJSkillIconWidget` | `WBP_SkillIcon` | `IconImage` (strict) / `KeyText`, `CooldownBar`, `CooldownImage` (**Optional**) | `SetSlotData(Slot, Character)` + `NativeTick`에서 쿨타임 폴링 | `WBP_PlayerHUD`의 `SkillRow`에 3개 |
+| `UGJSkillSlotWidget` | `WBP_SkillSlot` | `IconImage` (strict) / `KeyText` (**Optional**) | `SetSlotData(Slot, Character)`, 드롭 시 `SwapSkillSlots` | 인벤토리 스킬 페이지에 3개 |
 
 인벤토리/무기 페이지 UI(`UGJInventoryWidget`, `UGJInventorySlotWidget`, `UGJWeaponSlotWidget`)는 3.2절 참고. 게임오버 화면(`UGJGameOverWidget` → `WBP_GameOver`, `BindWidget: ReturnToHubButton` / `BindWidgetOptional: RunCountText`)은 6.5절 참고 — 이것도 동일한 C++ 베이스 + `BindWidget` 패턴이다.
 
 `EXPBar`/`LevelText`가 strict `BindWidget`이 아니라 **`BindWidgetOptional`인 이유**: strict로 두면 C++이 먼저 들어간 순간 `WBP_PlayerHUD` 컴파일이 깨져서, 에디터에서 위젯을 배치하기 전까지 게임이 정상 동작하지 않는다. 이 프로젝트는 C++ 변경과 에디터 작업이 항상 시차를 두고 일어나므로 새로 추가하는 바인딩은 Optional이 안전하다.
 
-`WBP_PlayerHUD`의 현재 구조는 `RootCanvas > StatusRow(HorizontalBox)` 아래 왼쪽 `PortraitBox`(초상화 `PortraitImage` + `LevelText`), 오른쪽 `StatusBox`(HP/MP/EXP 바, `SizeRule=Fill`)다. 초상화는 아직 아트가 없어 `T_UE_Logo_M`을 자리표시자로 물려 뒀다 — `PortraitImage`는 `bIsVariable=true`라 나중에 런타임 교체도 가능하다.
+**`CooldownBar`(ProgressBar)와 `CooldownImage`(머티리얼)를 둘 다 Optional로 받는 이유**: `ProgressBar`는 `SetPercent`, 머티리얼 `Image`는 스칼라 파라미터라 **호출이 아예 다르다.** 둘 다 Optional로 두고 붙어 있는 쪽만 갱신하면, WBP에서 어느 방식을 골라도 C++이 안 바뀐다. 지금은 `ProgressBar`(`BarFillType = TopToBottom` — 덮개가 위에서 걷히고 아이콘이 아래에서 드러난다)를 쓰고, 나중에 방사형 마스크 머티리얼이 생기면 **WBP에서 `CooldownBar`를 지우고 `CooldownImage`를 넣는 것만으로 교체**된다.
+
+> ⚠️ **UMG 오버레이 슬롯의 기본 정렬은 Fill이 아니라 `HAlign_Left`/`VAlign_Top`이다.** 아이콘 위에 쿨타임 덮개를 겹칠 때 이걸 안 바꾸면 ProgressBar가 아이콘을 덮지 않고 **자기 desired size(몇 픽셀)로 좌상단에 찍혀서** "쿨타임이 안 보인다"가 된다. `IconImage` 쪽은 브러시에 64x64가 박혀 있어 Left/Top 그대로 둬도 된다. 같은 이유로 ProgressBar의 배경(`widgetStyle.backgroundImage.drawAs`)은 `NoDrawType`으로 꺼야 한다 — 기본 회색 배경이 아이콘을 항상 가린다.
+
+`WBP_SkillSlot`(인벤토리)은 `WBP_SkillIcon`(HUD)과 달리 **쿨타임 표시가 없고**, 구조가 `SizeBox(64) → Border → Overlay → Image + Text`다. `WBP_WeaponSlot`과 같은 모양인데 이유가 있다: **빈 칸이면 아이콘을 숨기는데, 히트 영역이 아이콘뿐이면 빈 칸이 드롭 대상이 안 된다.** Border가 항상 배경을 그려서 히트 영역을 유지한다.
+
+`WBP_PlayerHUD`의 현재 구조는 `RootCanvas > StatusRow(HorizontalBox)` 아래 왼쪽 `PortraitBox`(초상화 `PortraitImage` + `LevelText`), 오른쪽 `StatusBox`(HP/MP/EXP 바 + 그 아래 `SkillRow`, `SizeRule=Fill`)다. `SkillRow`를 넣으면서 `StatusRow`의 캔버스 슬롯 높이를 116 → 190으로 늘렸다 — 고정 크기라 64px 아이콘 줄이 그대로 잘렸다. `bAutoSize`를 켜는 방법은 쓰지 않았다(그러면 HP/MP/EXP 바가 440 폭을 채우는 대신 desired size로 쪼그라들어 기존 레이아웃이 깨진다). 초상화는 아직 아트가 없어 `T_UE_Logo_M`을 자리표시자로 물려 뒀다 — `PortraitImage`는 `bIsVariable=true`라 나중에 런타임 교체도 가능하다.
 
 `WBP_AmmoUI`는 위 두 개와 달리 **자체 이벤트 그래프**로 동작함(값 갱신 함수는 C++이 아니라 BP `UpdateAmmoText(CurrentAmmo, MaxAmmo)` 함수). Construct 시점에 `GetOwningPlayerPawn()`→`AGJCharacter`로 캐스트한 뒤 **`AGJCharacter::OnActiveWeaponAmmoChanged`를 구독**하고 초기값을 한 번 그려줌. 예전에는 그 시점의 `EquippedWeapon`을 직접 캐스팅해서 `AGJWeapon_Ranged::OnAmmoChanged`에 바인딩하는 방식이었는데, 그러면 무기를 스왑해도 재바인딩이 안 돼서 탄약 표시가 예전 무기 것에 고정되는 버그가 있었음 — 캐릭터 델리게이트로 옮기면서 해결(2.2절 "무기 장착/스왑" 참고).
 
@@ -659,9 +714,12 @@ BT 트리 구조 자체(Selector로 IsInAttackRange 분기해서 MoveTo vs Melee
 - 런은 **사망으로만** 끝남 — 클리어(승리) 조건이 없음 (M5)
 - 허브에는 런 시작 포탈 하나뿐 — 상점/영구 강화 미구현 (M6)
 - `FCharacterStat.CooldownReduction`은 필드만 있고 어디에도 연결되지 않음 — 적용 대상이 될 스킬 시스템이 아직 없음
-- **스킬 쿨타임·슬롯 HUD가 없음** — 어느 키에 무슨 스킬이 있는지 `GJSkillInfo` 콘솔로만 확인 가능. 슬롯 교체가 가능해진 만큼 실제로 불편하다
-- 차징 중 시각 피드백이 없음 — 얼마나 찼는지 화면에 안 보이고, 시전 애니메이션·발사 이펙트도 없다. 구체가 그냥 나타난다
 - `ESkillType::Persistent`(지속형 스킬) 미구현 — 발사 시 경고만 찍힘
+- 쿨타임 표시가 시계방향 차오름이 아니라 **위에서 아래로 걷히는 형태**다 — 방사형 마스크 머티리얼을 만들면 `WBP_SkillIcon`에서 `CooldownBar`를 지우고 `CooldownImage`를 넣는 것만으로 교체된다(**C++ 변경 없음**, 7절 참고)
+- 스킬 아이콘이 자리표시자 텍스처다(`T_GridChecker_A`) — 카드 아이콘과 같은 상태
+- **MP가 부족할 때 아이콘에 표시가 없다** — 눌러도 안 나가는 이유를 화면에서 알 수 없다. 지금은 `[SKILL] 발동 안 됨` 로그로만 확인 가능하고, 쿨타임과 달리 아이콘에 아무 변화가 없다
+- 차징 구체에 이펙트·머티리얼 연출이 없음 — 발사될 구체의 메시를 그대로 키울 뿐이고 시전 애니메이션도 없다
+- 인벤토리 스킬 칸에 마우스를 올려도 설명 툴팁이 없음 — `FSkillData.Description`이 어디에도 안 쓰인다
 - Skill2(Q)·Skill3(F)에 넣을 실제 스킬이 없음 — 슬롯·입력 바인딩·교체 UI는 전부 준비됨
 - `DT_SkillData`의 파이어볼 수치와 `DT_CharacterStat`의 `SkillPower` 곡선은 **임시 테스트 값**
 - `FCharacterStat.CooldownReduction`은 여전히 어디에도 연결되지 않음 — **스킬 쿨타임에 적용하는 게 자연스러운 첫 후보**가 됐다

@@ -92,8 +92,12 @@ protected:
     UPROPERTY(EditDefaultsOnly, Category = "Skill")
     TSubclassOf<AGJProjectile> DefaultProjectileClass;
 
-    // 캐릭터 기준 발사 위치 오프셋 (X=전방, Y=우측, Z=상방).
-    // 무기의 MuzzleSocket을 안 쓰는 이유: 스킬은 맨손이어도 나가야 한다.
+    // 무기에 이 소켓이 있으면 거기서 나간다. 총알과 같은 자리다.
+    UPROPERTY(EditDefaultsOnly, Category = "Skill")
+    FName MuzzleSocketName = FName("MuzzleSocket");
+
+    // 무기가 없거나 소켓이 없을 때 쓰는 캐릭터 기준 오프셋 (X=전방, Y=우측, Z=상방).
+    // 스킬은 맨손이어도 나가야 해서 폴백이 필요하다.
     UPROPERTY(EditDefaultsOnly, Category = "Skill")
     FVector MuzzleOffset = FVector(60.f, 0.f, 40.f);
 
@@ -121,9 +125,35 @@ protected:
 
     AGJCharacter* GetOwnerCharacter() const;
 
+    // 구체가 나갈 자리. 무기 소켓이 있으면 그 컴포넌트와 소켓 이름을, 없으면
+    // 캐릭터 루트와 NAME_None을 준다. 발사와 차징 미리보기가 같은 자리를 쓰게
+    // 하려고 한 군데로 모았다 - 갈라지면 손 뗄 때 구체가 순간이동한다.
+    USceneComponent* GetMuzzleComponent(FName& OutSocketName) const;
+
+    // 위 결과를 월드 좌표 한 점으로 바꾼 것. 발사가 쓴다.
+    FVector GetMuzzleLocation() const;
+
     // 비활성 구체를 꺼내온다. 없으면 풀 크기 한도 내에서 새로 스폰한다.
     AGJProjectile* GetPooledProjectile(TSubclassOf<AGJProjectile> ProjClass);
 
     // 실제 발사. ChargeRatio는 0~1이다.
     void FireSkill(int32 SlotIndex, const FSkillData& Skill, float ChargeRatio);
+
+    virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
+
+    // 차징 시작 시 구체를 준비하고 보이게 한다. 메시를 못 찾으면 연출만 건너뛴다.
+    void ShowChargeOrb(const FSkillData& Skill);
+
+    // 구체를 숨기고 틱을 끈다. 발사·취소 어느 쪽으로 끝나든 반드시 지나간다.
+    void HideChargeOrb();
+
+    // 지금 차징 비율(0~1). 발사 계산과 구체 크기가 같은 값을 쓰게 한다.
+    float GetChargeRatio() const;
+
+    // 입력이 거절된 이유를 알리는 로그의 도배 방지용.
+    float LastRejectLogTime = 0.f;
+
+    // 왜 안 나갔는지 남긴다. 조용히 빠지면 "가끔 스킬이 안 나간다"가 되고,
+    // 데이터를 건드린 뒤 그러면 원인을 찾는 데 한참 걸린다.
+    void LogSkillRejected(const TCHAR* Reason);
 };

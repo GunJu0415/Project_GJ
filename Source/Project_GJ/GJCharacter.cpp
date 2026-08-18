@@ -2,6 +2,7 @@
 #include "AbilitySystemComponent.h"
 #include "Camera/CameraComponent.h"
 #include "Components/CapsuleComponent.h"
+#include "Components/StaticMeshComponent.h"
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
 #include "GameFramework/CharacterMovementComponent.h"
@@ -47,6 +48,13 @@ AGJCharacter::AGJCharacter()
     InventoryComponent = CreateDefaultSubobject<UGJInventoryComponent>(TEXT("InventoryComponent"));
     CardComponent = CreateDefaultSubobject<UGJCardComponent>(TEXT("CardComponent"));
     SkillComponent = CreateDefaultSubobject<UGJSkillComponent>(TEXT("SkillComponent"));
+
+    ChargeOrbMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("ChargeOrbMesh"));
+    ChargeOrbMesh->SetupAttachment(RootComponent);
+    // 순수 연출이라 충돌도 그림자도 필요 없다.
+    ChargeOrbMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+    ChargeOrbMesh->SetCastShadow(false);
+    ChargeOrbMesh->SetVisibility(false);
 
     // 무기 슬롯 2칸(0번/1번) - 처음엔 둘 다 빈 슬롯
     WeaponSlots.Init(nullptr, 2);

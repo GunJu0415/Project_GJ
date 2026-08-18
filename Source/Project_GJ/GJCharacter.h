@@ -24,6 +24,7 @@ class UGJInventoryComponent;
 class UGJCardComponent;
 class UGJSkillComponent;
 class UGJInventoryWidget;
+class UStaticMeshComponent;
 
 enum class EDodgeType
 {
@@ -345,6 +346,9 @@ public:
     UFUNCTION(BlueprintPure, Category = "Skill")
     UGJSkillComponent* GetSkillComponent() const { return SkillComponent; }
 
+    UFUNCTION(BlueprintPure, Category = "Skill")
+    UStaticMeshComponent* GetChargeOrbMesh() const { return ChargeOrbMesh; }
+
 protected:
 
     UPROPERTY(EditDefaultsOnly, Category = "Weapon")
@@ -474,6 +478,12 @@ protected:
     // 액티브 스킬 (슬롯/쿨타임/차징 전부 여기 - 캐릭터는 입력만 넘긴다)
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Skill")
     UGJSkillComponent* SkillComponent;
+
+    // 차징 중 총구 앞에 보이는 구체. 캐릭터가 소유하는 이유는 UGJSkillComponent가
+    // UActorComponent라 트랜스폼이 없어 자식 메시를 못 달기 때문이다.
+    // 켜고 끄고 키우는 것은 전부 스킬 컴포넌트가 한다 - 캐릭터는 스킬을 모른다.
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Skill")
+    UStaticMeshComponent* ChargeOrbMesh;
 
     // 스킬 입력 액션. BP_GJCharacter 디테일 패널에서 IA_Skill1/2/3을 할당해야 동작한다.
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input")

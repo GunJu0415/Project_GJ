@@ -1,14 +1,19 @@
 #include "GJSkillComponent.h"
 #include "GJCharacter.h"
 #include "GJProjectile.h"
+#include "GJWeaponBase.h"
 #include "GJCombatStatics.h"
 #include "Engine/DataTable.h"
 #include "Engine/World.h"
+#include "Components/StaticMeshComponent.h"
 
 UGJSkillComponent::UGJSkillComponent()
 {
-    // 차징과 쿨타임을 시각 비교로 계산하므로 매 프레임 할 일이 없다.
-    PrimaryComponentTick.bCanEverTick = false;
+    // 차징과 쿨타임은 시각 비교로 계산하므로 평소엔 틱이 필요 없다.
+    // 다만 차징 중에는 구체 크기를 매 프레임 갱신해야 해서 틱 자체는 가능하게 두고,
+    // 시작할 때만 켠다. bCanEverTick이 false면 SetComponentTickEnabled가 아무 효과도 없다.
+    PrimaryComponentTick.bCanEverTick = true;
+    PrimaryComponentTick.bStartWithTickEnabled = false;
 
     EquippedSkills.Init(NAME_None, GJ_SKILL_SLOT_COUNT);
     CooldownEndTime.Init(0.f, GJ_SKILL_SLOT_COUNT);
@@ -99,6 +104,10 @@ void UGJSkillComponent::CancelCharge()
 {
     ChargingSlot = INDEX_NONE;
     ChargeStartTime = 0.f;
+
+    // 회피·인벤토리·카드 화면·사망이 전부 이 함수를 지나간다. 여기서 끄면 경로마다
+    // 따로 챙길 필요가 없다.
+    HideChargeOrb();
 }
 
 void UGJSkillComponent::OnSkillPressed(int32 SlotIndex)
@@ -118,7 +127,7 @@ void UGJSkillComponent::OnSkillPressed(int32 SlotIndex)
     const FSkillData* Skill = FindSkill(EquippedSkills[SlotIndex]);
     if (!Skill)
     {
-        // 빈 슬롯이다. 로그를 찍으면 클릭할 때마다 스팸된다.
+        LogSkillRejected(TEXT("빈 슬롯이거나 테이블에 없는 스킬"));
         return;
     }
 
@@ -131,11 +140,15 @@ void UGJSkillComponent::OnSkillPressed(int32 SlotIndex)
 
     if (World->GetTimeSeconds() < CooldownEndTime[SlotIndex])
     {
+        LogSkillRejected(*FString::Printf(TEXT("쿨타임 %.1fs 남음"),
+            CooldownEndTime[SlotIndex] - World->GetTimeSeconds()));
         return;
     }
 
     if (Character->GetCurrentMP() < Skill->MPCost)
     {
+        LogSkillRejected(*FString::Printf(TEXT("MP 부족 (보유 %.0f < 소모 %.0f)"),
+            Character->GetCurrentMP(), Skill->MPCost));
         return;
     }
 
@@ -149,6 +162,7 @@ void UGJSkillComponent::OnSkillPressed(int32 SlotIndex)
 
     ChargingSlot = SlotIndex;
     ChargeStartTime = World->GetTimeSeconds();
+    ShowChargeOrb(*Skill);
 }
 
 void UGJSkillComponent::OnSkillReleased(int32 SlotIndex)
@@ -262,10 +276,7 @@ void UGJSkillComponent::FireSkill(int32 SlotIndex, const FSkillData& Skill, floa
     const float Multiplier = 1.f + (Skill.MaxChargeMultiplier - 1.f) * ChargeRatio;
 
     const FVector Forward = Character->GetActorForwardVector();
-    const FVector SpawnLocation = Character->GetActorLocation()
-        + Forward * MuzzleOffset.X
-        + Character->GetActorRightVector() * MuzzleOffset.Y
-        + FVector::UpVector * MuzzleOffset.Z;
+    const FVector SpawnLocation = GetMuzzleLocation();
 
     Projectile->SetActorLocationAndRotation(SpawnLocation, Forward.Rotation());
 
@@ -374,4 +385,191 @@ void UGJSkillComponent::LogSkillInfo() const
             Remaining,
             (ChargingSlot == i) ? TEXT(" / 차징 중") : TEXT(""));
     }
+}
+
+float UGJSkillComponent::GetChargeRatio() const
+{
+    if (ChargingSlot == INDEX_NONE)
+    {
+        return 0.f;
+    }
+
+    const UWorld* World = GetWorld();
+    const FSkillData* Skill = FindSkill(GetSkillInSlot(ChargingSlot));
+    if (!World || !Skill || Skill->ChargeTime <= 0.f)
+    {
+        return 0.f;
+    }
+
+    return FMath::Clamp((World->GetTimeSeconds() - ChargeStartTime) / Skill->ChargeTime, 0.f, 1.f);
+}
+
+void UGJSkillComponent::ShowChargeOrb(const FSkillData& Skill)
+{
+    AGJCharacter* Character = GetOwnerCharacter();
+    if (!Character)
+    {
+        return;
+    }
+
+    UStaticMeshComponent* Orb = Character->GetChargeOrbMesh();
+    if (!Orb)
+    {
+        return;
+    }
+
+    // 발사될 구체의 클래스에서 메시를 그대로 가져온다. 데이터를 따로 두면 언젠가
+    // 차징 중 모습과 실제 발사체가 어긋나고, 고칠 때까지 아무도 모른다.
+    TSubclassOf<AGJProjectile> ProjClass = Skill.ProjectileClass ? Skill.ProjectileClass : DefaultProjectileClass;
+    if (!ProjClass)
+    {
+        return;
+    }
+
+    const AGJProjectile* ProjCDO = ProjClass->GetDefaultObject<AGJProjectile>();
+    UStaticMeshComponent* SrcMesh = ProjCDO ? ProjCDO->GetMeshComp() : nullptr;
+    if (!SrcMesh || !SrcMesh->GetStaticMesh())
+    {
+        // 연출이 게임플레이를 막으면 안 된다. 구체 없이 차징은 정상 진행된다.
+        return;
+    }
+
+    Orb->SetStaticMesh(SrcMesh->GetStaticMesh());
+    for (int32 i = 0; i < SrcMesh->GetNumMaterials(); i++)
+    {
+        Orb->SetMaterial(i, SrcMesh->GetMaterial(i));
+    }
+
+    // 총구에 붙여두면 조준으로 무기가 돌아갈 때 구체도 따라간다. 매 프레임 월드
+    // 좌표를 다시 찍는 것보다 이쪽이 싸고 어긋나지도 않는다.
+    FName MuzzleSocket;
+    if (USceneComponent* MuzzleComp = GetMuzzleComponent(MuzzleSocket))
+    {
+        Orb->AttachToComponent(MuzzleComp, FAttachmentTransformRules::KeepRelativeTransform, MuzzleSocket);
+        // 소켓에 붙었으면 소켓 자리가 곧 총구다. 맨손 폴백일 때만 오프셋을 준다.
+        Orb->SetRelativeLocation(MuzzleSocket.IsNone() ? MuzzleOffset : FVector::ZeroVector);
+    }
+
+    // 발사체는 액터 스케일과 메시의 상대 스케일이 곱해져 보인다(BP_GJSkillProjectile은
+    // 메시가 3배). 미리보기는 컴포넌트 하나뿐이라 그 상대 스케일을 직접 곱해야 크기가 맞는다.
+    Orb->SetRelativeScale3D(SrcMesh->GetRelativeScale3D() * Skill.BaseScale);
+    Orb->SetVisibility(true);
+
+    SetComponentTickEnabled(true);
+}
+
+void UGJSkillComponent::HideChargeOrb()
+{
+    SetComponentTickEnabled(false);
+
+    if (AGJCharacter* Character = GetOwnerCharacter())
+    {
+        if (UStaticMeshComponent* Orb = Character->GetChargeOrbMesh())
+        {
+            Orb->SetVisibility(false);
+        }
+    }
+}
+
+void UGJSkillComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
+{
+    Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
+
+    AGJCharacter* Character = GetOwnerCharacter();
+    const FSkillData* Skill = (ChargingSlot != INDEX_NONE) ? FindSkill(GetSkillInSlot(ChargingSlot)) : nullptr;
+    if (!Character || !Skill)
+    {
+        // 차징이 아닌데 틱이 돌고 있다. 정리하고 끈다.
+        HideChargeOrb();
+        return;
+    }
+
+    UStaticMeshComponent* Orb = Character->GetChargeOrbMesh();
+    if (!Orb || !Orb->IsVisible())
+    {
+        return;
+    }
+
+    // 발사와 같은 공식이다. 그래야 미리보기 크기가 실제 발사 크기와 일치한다.
+    const float Multiplier = 1.f + (Skill->MaxChargeMultiplier - 1.f) * GetChargeRatio();
+
+    // 클래스가 비어 있으면 GetDefaultObject를 부를 수 없다. ShowChargeOrb가 이미
+    // 그 경우를 걸러 구체를 안 띄우지만, 여기서도 막아야 크래시가 안 난다.
+    TSubclassOf<AGJProjectile> ProjClass = Skill->ProjectileClass ? Skill->ProjectileClass : DefaultProjectileClass;
+    if (!ProjClass)
+    {
+        return;
+    }
+
+    const AGJProjectile* ProjCDO = ProjClass->GetDefaultObject<AGJProjectile>();
+    if (UStaticMeshComponent* SrcMesh = ProjCDO ? ProjCDO->GetMeshComp() : nullptr)
+    {
+        Orb->SetRelativeScale3D(SrcMesh->GetRelativeScale3D() * Skill->BaseScale * Multiplier);
+    }
+}
+
+USceneComponent* UGJSkillComponent::GetMuzzleComponent(FName& OutSocketName) const
+{
+    OutSocketName = NAME_None;
+
+    AGJCharacter* Character = GetOwnerCharacter();
+    if (!Character)
+    {
+        return nullptr;
+    }
+
+    if (AGJWeaponBase* Weapon = Character->GetEquippedWeapon())
+    {
+        if (USkeletalMeshComponent* WeaponMesh = Weapon->GetWeaponMesh())
+        {
+            if (WeaponMesh->DoesSocketExist(MuzzleSocketName))
+            {
+                OutSocketName = MuzzleSocketName;
+                return WeaponMesh;
+            }
+        }
+    }
+
+    return Character->GetRootComponent();
+}
+
+FVector UGJSkillComponent::GetMuzzleLocation() const
+{
+    FName Socket;
+    const USceneComponent* MuzzleComp = GetMuzzleComponent(Socket);
+    if (!MuzzleComp)
+    {
+        return FVector::ZeroVector;
+    }
+
+    if (!Socket.IsNone())
+    {
+        return MuzzleComp->GetSocketLocation(Socket);
+    }
+
+    // 맨손 폴백: 캐릭터 기준 오프셋
+    const AGJCharacter* Character = GetOwnerCharacter();
+    return Character->GetActorLocation()
+        + Character->GetActorForwardVector() * MuzzleOffset.X
+        + Character->GetActorRightVector() * MuzzleOffset.Y
+        + FVector::UpVector * MuzzleOffset.Z;
+}
+
+void UGJSkillComponent::LogSkillRejected(const TCHAR* Reason)
+{
+    const UWorld* World = GetWorld();
+    if (!World)
+    {
+        return;
+    }
+
+    // 누르고 있으면 매 프레임 들어오므로 간격을 둔다.
+    const float Now = World->GetTimeSeconds();
+    if (Now - LastRejectLogTime < 0.5f)
+    {
+        return;
+    }
+    LastRejectLogTime = Now;
+
+    UE_LOG(LogTemp, Log, TEXT("[SKILL] 발동 안 됨: %s"), Reason);
 }

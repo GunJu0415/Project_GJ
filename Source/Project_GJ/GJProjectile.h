@@ -28,6 +28,10 @@ public:
     // 현재 사용 중인 총알인지 확인
     bool IsActive() const { return bIsActive; }
 
+    // 차징 미리보기가 이 메시를 그대로 복사해 쓴다. 그래야 차징 중 보이는 구체와
+    // 실제로 날아가는 구체가 자동으로 같아진다.
+    FORCEINLINE UStaticMeshComponent* GetMeshComp() const { return MeshComp; }
+
 protected:
     virtual void BeginPlay() override;
 

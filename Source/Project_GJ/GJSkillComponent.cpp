@@ -145,7 +145,7 @@ void UGJSkillComponent::OnSkillPressed(int32 SlotIndex)
         return;
     }
 
-    if (Character->GetCurrentMP() < Skill->MPCost)
+    if (!HasEnoughMP(SlotIndex))
     {
         LogSkillRejected(*FString::Printf(TEXT("MP 부족 (보유 %.0f < 소모 %.0f)"),
             Character->GetCurrentMP(), Skill->MPCost));
@@ -572,4 +572,17 @@ void UGJSkillComponent::LogSkillRejected(const TCHAR* Reason)
     LastRejectLogTime = Now;
 
     UE_LOG(LogTemp, Log, TEXT("[SKILL] 발동 안 됨: %s"), Reason);
+}
+
+bool UGJSkillComponent::HasEnoughMP(int32 SlotIndex) const
+{
+    const FSkillData* Skill = FindSkill(GetSkillInSlot(SlotIndex));
+    if (!Skill)
+    {
+        // 빈 슬롯이다. 낼 비용이 없으니 막을 이유도 없다.
+        return true;
+    }
+
+    const AGJCharacter* Character = GetOwnerCharacter();
+    return Character && Character->GetCurrentMP() >= Skill->MPCost;
 }

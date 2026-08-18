@@ -39,6 +39,9 @@ void UGJSkillIconWidget::SetSlotData(int32 InSlotIndex, AGJCharacter* InOwningCh
         CooldownMID = CooldownImage->GetDynamicMaterial();
     }
 
+    // 슬롯이 바뀌었으니 다음 틱에서 색을 무조건 다시 칠하게 한다.
+    LastAffordState = INDEX_NONE;
+
     RefreshSkill();
 }
 
@@ -105,4 +108,29 @@ void UGJSkillIconWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTi
     {
         SetCooldownRatio(Skills->GetCooldownRatio(SlotIndex));
     }
+
+    UpdateAffordTint();
+}
+
+void UGJSkillIconWidget::UpdateAffordTint()
+{
+    if (!IconImage || !OwningCharacter)
+    {
+        return;
+    }
+
+    const UGJSkillComponent* Skills = OwningCharacter->GetSkillComponent();
+    if (!Skills)
+    {
+        return;
+    }
+
+    const int32 AffordState = Skills->HasEnoughMP(SlotIndex) ? 1 : 0;
+    if (AffordState == LastAffordState)
+    {
+        return;
+    }
+
+    LastAffordState = AffordState;
+    IconImage->SetColorAndOpacity(AffordState == 1 ? AffordableTint : UnaffordableTint);
 }

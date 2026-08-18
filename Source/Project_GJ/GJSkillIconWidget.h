@@ -34,6 +34,10 @@ protected:
 
     void SetCooldownRatio(float Ratio);
 
+    // MP를 낼 수 있는지 보고 아이콘 색을 바꾼다. 쿨타임 덮개와 독립이다 -
+    // 덮개는 CooldownBar, 틴트는 IconImage라 둘이 겹쳐도 서로 안 건드린다.
+    void UpdateAffordTint();
+
     // 이번 태스크에서 WBP를 같이 만드므로 아이콘만 strict로 둔다.
     UPROPERTY(meta = (BindWidget))
     UImage* IconImage;
@@ -54,10 +58,24 @@ protected:
     UPROPERTY(EditDefaultsOnly, Category = "Skill")
     FName CooldownParamName = FName("Progress");
 
+    // MP가 충분할 때의 색. 흰색이면 원본 아이콘 그대로 보인다.
+    UPROPERTY(EditDefaultsOnly, Category = "Skill")
+    FLinearColor AffordableTint = FLinearColor::White;
+
+    // MP가 모자랄 때의 색. 회색이 아니라 파랑인 이유는 "쿨타임이 아니라 마나 문제"를
+    // 색으로 구분하기 위해서다.
+    UPROPERTY(EditDefaultsOnly, Category = "Skill")
+    FLinearColor UnaffordableTint = FLinearColor(0.35f, 0.5f, 1.0f, 1.0f);
+
     UPROPERTY()
     UMaterialInstanceDynamic* CooldownMID;
 
     int32 SlotIndex = INDEX_NONE;
+
+    // 직전 프레임의 MP 충분 여부(0/1, INDEX_NONE = 아직 안 정해짐). 매 프레임
+    // SetColorAndOpacity를 부르면 값이 같아도 Slate 무효화가 걸릴 수 있어서,
+    // 바뀌는 순간에만 부르려고 들고 있는다.
+    int32 LastAffordState = INDEX_NONE;
 
     UPROPERTY()
     AGJCharacter* OwningCharacter;

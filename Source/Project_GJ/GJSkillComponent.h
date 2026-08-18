@@ -61,6 +61,12 @@ public:
     // 테이블에서 스킬 정의를 찾는다. 없으면 nullptr.
     const FSkillData* FindSkill(FName SkillId) const;
 
+    // 지금 이 슬롯의 MP 비용을 낼 수 있나. 빈 슬롯은 낼 것이 없으므로 true다.
+    // OnSkillPressed와 HUD 아이콘이 같이 쓴다 - 화면이 보여주는 조건과 실제로
+    // 나가는 조건이 갈라지면, 아이콘은 쓸 수 있다는데 눌러도 안 나가는 상태가 된다.
+    UFUNCTION(BlueprintPure, Category = "Skill")
+    bool HasEnoughMP(int32 SlotIndex) const;
+
     // 슬롯 3개의 상태를 로그로 출력한다. AGJCharacter의 GJSkillInfo가 부른다.
     UFUNCTION(BlueprintCallable, Category = "Skill")
     void LogSkillInfo() const;

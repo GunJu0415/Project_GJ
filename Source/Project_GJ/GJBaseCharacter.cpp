@@ -88,4 +88,10 @@ void AGJBaseCharacter::HandleDeath()
     GetMesh()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 
     OnDeath();
+
+    UE_LOG(LogTemp, Log, TEXT("[DEATH] %s 사망"), *GetName());
+
+    // BP 사망 연출(OnDeath) 뒤에 방송한다. 구독자가 이 델리게이트 안에서 액터를 건드릴 수
+    // 있는데, 먼저 방송하면 OnDeath가 이미 정리된 객체 위에서 돌 수 있다.
+    OnCharacterDied.Broadcast(this);
 }

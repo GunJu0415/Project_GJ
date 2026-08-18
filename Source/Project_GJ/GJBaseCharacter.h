@@ -12,6 +12,11 @@ class UAbilitySystemComponent;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnDamagedSignature, float, DamageAmount, AActor*, DamageCauser);
 
+// 이 캐릭터가 죽었다. 룸이 자기가 스폰한 적의 전멸을 세는 데 쓴다.
+// OnDeath(BlueprintImplementableEvent)와 별도로 두는 이유: 그건 C++에서 구독할 수 없다.
+class AGJBaseCharacter;
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnCharacterDiedSignature, AGJBaseCharacter*, DeadCharacter);
+
 // 베이스 클래스이므로 레벨에 직접 스폰되지 않도록 Abstract 키워드를 추가하는 것이 좋습니다.
 UCLASS(Abstract)
 class PROJECT_GJ_API AGJBaseCharacter : public ACharacter, public IAbilitySystemInterface
@@ -72,6 +77,9 @@ public:
 
     UPROPERTY(BlueprintAssignable, Category = "Stat")
     FOnDamagedSignature OnDamaged;
+
+    UPROPERTY(BlueprintAssignable, Category = "Stat")
+    FOnCharacterDiedSignature OnCharacterDied;
 
 protected:
     // 마지막으로 이 캐릭터에게 데미지를 준 컨트롤러. HandleDeath()에는 가해자 정보가 전혀

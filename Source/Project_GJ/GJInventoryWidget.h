@@ -8,6 +8,7 @@ class UUniformGridPanel;
 class UGJInventorySlotWidget;
 class UGJInventoryComponent;
 class UGJWeaponSlotWidget;
+class UGJSkillSlotWidget;
 class AGJCharacter;
 
 // 인벤토리 격자 전체 패널. 큰 사각형(GridPanel을 담는 배경) 안에 슬롯 위젯이 격자로 채워짐.
@@ -31,6 +32,10 @@ protected:
     // 무기 페이지(슬롯 0/1) 아이콘/활성 표시를 최신 상태로 갱신
     UFUNCTION()
     void RefreshWeaponSlots();
+
+    // 스킬 페이지(슬롯 0/1/2) 아이콘을 최신 상태로 갱신
+    UFUNCTION()
+    void RefreshSkillSlots();
 
     virtual void NativeOnInitialized() override;
 
@@ -80,6 +85,18 @@ protected:
 
     UPROPERTY(meta = (BindWidgetOptional))
     UGJWeaponSlotWidget* WeaponSlotWidget2;
+
+    // ==========================================
+    // 3페이지: 스킬 페이지 (슬롯 0/1/2 = 우클릭/Q/F)
+    // ==========================================
+    UPROPERTY(meta = (BindWidgetOptional))
+    UGJSkillSlotWidget* SkillSlotWidget1;
+
+    UPROPERTY(meta = (BindWidgetOptional))
+    UGJSkillSlotWidget* SkillSlotWidget2;
+
+    UPROPERTY(meta = (BindWidgetOptional))
+    UGJSkillSlotWidget* SkillSlotWidget3;
 
     UPROPERTY()
     AGJCharacter* OwningCharacter;

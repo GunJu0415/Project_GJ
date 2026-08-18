@@ -2,6 +2,8 @@
 #include "GJInventorySlotWidget.h"
 #include "GJInventoryComponent.h"
 #include "GJWeaponSlotWidget.h"
+#include "GJSkillSlotWidget.h"
+#include "GJSkillComponent.h"
 #include "GJCharacter.h"
 #include "Components/UniformGridPanel.h"
 #include "Containers/Ticker.h"
@@ -34,9 +36,18 @@ void UGJInventoryWidget::InitializeInventory(UGJInventoryComponent* InInventory)
     if (OwningCharacter)
     {
         OwningCharacter->OnWeaponSlotsChanged.AddDynamic(this, &UGJInventoryWidget::RefreshWeaponSlots);
+
+        // 스킬 페이지는 HUD 아이콘과 같은 델리게이트를 듣는다. 드래그로 자리를 바꾸면
+        // 스킬 컴포넌트가 방송하고, 이 위젯과 HUD가 각자 자기 칸을 다시 그린다.
+        if (UGJSkillComponent* Skills = OwningCharacter->GetSkillComponent())
+        {
+            Skills->OnSkillSlotsChanged.RemoveDynamic(this, &UGJInventoryWidget::RefreshSkillSlots);
+            Skills->OnSkillSlotsChanged.AddDynamic(this, &UGJInventoryWidget::RefreshSkillSlots);
+        }
     }
 
     RefreshWeaponSlots();
+    RefreshSkillSlots();
 }
 
 void UGJInventoryWidget::RefreshWeaponSlots()
@@ -49,6 +60,13 @@ void UGJInventoryWidget::RefreshWeaponSlots()
     {
         WeaponSlotWidget2->SetSlotData(1, OwningCharacter);
     }
+}
+
+void UGJInventoryWidget::RefreshSkillSlots()
+{
+    if (SkillSlotWidget1) { SkillSlotWidget1->SetSlotData(0, OwningCharacter); }
+    if (SkillSlotWidget2) { SkillSlotWidget2->SetSlotData(1, OwningCharacter); }
+    if (SkillSlotWidget3) { SkillSlotWidget3->SetSlotData(2, OwningCharacter); }
 }
 
 void UGJInventoryWidget::RefreshGrid()

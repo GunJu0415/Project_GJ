@@ -585,6 +585,18 @@ UBTTask_MeleeAttack
 <li>메시를 못 찾으면 <b>연출만 건너뛰고</b> 차징과 발사는 정상 동작한다. 시각 요소가 게임플레이를 막으면 안 된다</li>
 </ul>
 
+<h3>MP 부족은 색으로, 쿨타임은 덮개로</h3>
+<p><code>HasEnoughMP(Slot)</code>이 <b>판정의 단일 출처</b>다. OnSkillPressed와 HUD 아이콘이 같이 쓴다 — 위젯이 따로 GetCurrentMP() &lt; MPCost를 계산하면, 나중에 "MP 소모 감소" 같은 게 붙었을 때 <b>아이콘은 쓸 수 있다는데 눌러도 안 나가는</b> 상태가 된다. 화면이 보여주는 조건과 실제로 나가는 조건은 같은 함수여야 한다(총구 위치를 한 함수로 모은 것과 같은 이유다).</p>
+<table>
+<tr><th>상태</th><th>표시</th><th>거는 위젯</th></tr>
+<tr><td>쿨타임</td><td>덮개가 위에서 아래로 걷힘</td><td>CooldownBar</td></tr>
+<tr><td>MP 부족</td><td>아이콘이 파래짐</td><td>IconImage의 ColorAndOpacity</td></tr>
+</table>
+<p><b>둘은 독립이다.</b> 거는 위젯이 달라서 동시에 걸려도 서로 안 건드린다. 회색이 아니라 파랑인 이유도 이것 — 색으로 "쿨타임이 아니라 마나 문제"가 구분된다.</p>
+<p>갱신은 <b>새 델리게이트 없이 기존 쿨타임 틱에 얹었다.</b> 아이콘은 이미 매 프레임 도니 추가 비용이 없다. 다만 SetColorAndOpacity는 <b>상태가 바뀌는 순간에만</b> 부른다(LastAffordState) — 매 프레임 부르면 값이 같아도 Slate 무효화가 걸릴 수 있다. SetSlotData에서 INDEX_NONE으로 되돌려 슬롯이 바뀌면 무조건 다시 칠한다.</p>
+<div class="note">⚠️ <b>틴트는 곱셈이라 채널을 깎을 수만 있다.</b> UnaffordableTint의 B를 1.0으로 두면 파랑을 "그대로 두는" 것이라 R/G만 깎여서 <b>파랗다기보다 어두워 보인다.</b> 파랑을 실제로 더하려면 <b>1을 넘겨야</b> 한다(현재 (0.30, 0.55, 1.5)). 아이콘이 무채색 자리표시자라 채도가 더 안 사는 것도 감안할 것.</div>
+<p>빈 슬롯은 낼 비용이 없으므로 HasEnoughMP가 true를 준다. 어차피 아이콘이 숨겨져 있어 화면에도 안 나온다.</p>
+
 <h3>안 나갈 때는 이유를 남긴다</h3>
 <p>OnSkillPressed는 조용히 return하는 경로가 여럿이다(쿨타임, MP 부족, 빈 슬롯, 이미 차징 중, 잘못된 슬롯). 로그가 없으면 <b>"눌러도 아무 일도 안 일어남"으로만 보여서</b> 데이터를 건드린 뒤 안 나가기 시작했을 때 원인을 찾는 데 한참 걸린다. 실제로 그렇게 시간을 썼다.</p>
 <p>지금은 쿨타임·MP 부족·빈 슬롯이 <code>[SKILL] 발동 안 됨: ...</code>을 남긴다. <b>Log 레벨에 0.5초 간격</b>이다 — 쿨타임 중 입력은 정상 플레이라 경고로 띄우면 시끄럽고, 누르고 있으면 매 프레임 들어온다.</p>
@@ -600,7 +612,7 @@ UBTTask_MeleeAttack
 <tr><td><code>UGJPlayerHUDWidget</code></td><td>WBP_PlayerHUD</td><td>HPBar, MPBar (strict) / EXPBar, LevelText, SkillIcon1/2/3 (<b>Optional</b>)</td><td>UpdateHP/UpdateMP(Current,Max) / UpdateEXP(Current,Required,Level) / InitializeSkillIcons(Character)</td><td>좌상단, AddToViewport()</td></tr>
 <tr><td><code>UGJCardSelectWidget</code></td><td>WBP_CardSelect</td><td>CardContainer (HorizontalBox, strict)</td><td>ShowChoices(TArray&lt;FGJChoiceEntry&gt;) → OnChoiceSelected(int32)</td><td>레벨업 시 중앙, 일시정지 모달</td></tr>
 <tr><td><code>UGJCardWidget</code></td><td>WBP_Card</td><td>IconImage, NameText, DescText, SelectButton (전부 strict)</td><td>Setup(Index, Entry) → OnCardClicked(int32)</td><td>CardContainer에 런타임 생성</td></tr>
-<tr><td><code>UGJSkillIconWidget</code></td><td>WBP_SkillIcon</td><td>IconImage (strict) / KeyText, CooldownBar, CooldownImage (<b>Optional</b>)</td><td>SetSlotData(Slot, Character) + NativeTick에서 쿨타임 폴링</td><td>WBP_PlayerHUD의 SkillRow에 3개</td></tr>
+<tr><td><code>UGJSkillIconWidget</code></td><td>WBP_SkillIcon</td><td>IconImage (strict) / KeyText, CooldownBar, CooldownImage (<b>Optional</b>)</td><td>SetSlotData(Slot, Character) + NativeTick에서 쿨타임·MP 폴링</td><td>WBP_PlayerHUD의 SkillRow에 3개</td></tr>
 <tr><td><code>UGJSkillSlotWidget</code></td><td>WBP_SkillSlot</td><td>IconImage (strict) / KeyText (<b>Optional</b>)</td><td>SetSlotData(Slot, Character), 드롭 시 SwapSkillSlots</td><td>인벤토리 스킬 페이지에 3개</td></tr>
 </table>
 <p class="meta">인벤토리/무기 페이지 UI(UGJInventoryWidget, UGJInventorySlotWidget, UGJWeaponSlotWidget)는 3.2절 참고. 게임오버 화면(UGJGameOverWidget → WBP_GameOver, <code>BindWidget: ReturnToHubButton</code> / <code>BindWidgetOptional: RunCountText</code>)은 6.5절 참고 — 이것도 동일한 C++ 베이스 + BindWidget 패턴이다.</p>
@@ -740,7 +752,6 @@ UBTTask_MeleeAttack
 <li><code>ESkillType::Persistent</code>(지속형 스킬) 미구현 — 발사 시 경고만 찍힘</li>
 <li>쿨타임 표시가 시계방향 차오름이 아니라 <b>위에서 아래로 걷히는 형태</b>다 — 방사형 마스크 머티리얼을 만들면 WBP_SkillIcon에서 CooldownBar를 지우고 CooldownImage를 넣는 것만으로 교체된다(<b>C++ 변경 없음</b>, 7절 참고)</li>
 <li>스킬 아이콘이 자리표시자 텍스처다(T_GridChecker_A) — 카드 아이콘과 같은 상태</li>
-<li><b>MP가 부족할 때 아이콘에 표시가 없다</b> — 눌러도 안 나가는 이유를 화면에서 알 수 없다. 지금은 <code>[SKILL] 발동 안 됨</code> 로그로만 확인 가능하고, 쿨타임과 달리 아이콘에 아무 변화가 없다</li>
 <li>차징 구체에 이펙트·머티리얼 연출이 없음 — 발사될 구체의 메시를 그대로 키울 뿐이고 시전 애니메이션도 없다</li>
 <li>인벤토리 스킬 칸에 마우스를 올려도 설명 툴팁이 없음 — FSkillData.Description이 어디에도 안 쓰인다</li>
 <li>Skill2(Q)·Skill3(F)에 넣을 실제 스킬이 없음 — 슬롯·입력 바인딩·교체 UI는 전부 준비됨</li>

@@ -56,8 +56,16 @@ void AGJCombatRoom::SpawnEnemies(const FRoomSpawnData& Row)
         RegisterSpawnedEnemy(Enemy);
     }
 
-    UE_LOG(LogTemp, Log, TEXT("[ROOM] %s: 적 %d마리 스폰 (행 '%s')"),
-        *GetName(), AliveEnemies.Num(), *SpawnRowName.ToString());
+    // 뽑은 수와 실제로 등록된 수를 같이 찍는다. AliveEnemies.Num()만 찍으면
+    // "3을 뽑았다"와 "5를 뽑았는데 2마리가 스폰에 실패했다"가 구분되지 않는다.
+    UE_LOG(LogTemp, Log, TEXT("[ROOM] %s: 적 %d/%d마리 스폰 (행 '%s', 범위 %d~%d)"),
+        *GetName(), AliveEnemies.Num(), Count, *SpawnRowName.ToString(), Row.MinEnemies, Row.MaxEnemies);
+
+    if (AliveEnemies.Num() < Count)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("[ROOM] %s: 적 %d마리가 스폰에 실패했습니다."),
+            *GetName(), Count - AliveEnemies.Num());
+    }
 }
 
 TArray<UGJRoomSpawnPointComponent*> AGJCombatRoom::GatherPoints(ESpawnPointType Type) const

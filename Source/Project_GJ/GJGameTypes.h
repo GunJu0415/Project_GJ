@@ -10,6 +10,7 @@
 // 순환이 된다.
 class AGJWeaponBase;
 class AGJProjectile;
+class AGJEnemyCharacter;
 
 // -----------------------------------------
 // 캐릭터 스탯 데이터 테이블 구조체
@@ -463,4 +464,32 @@ struct FItemData : public FTableRowBase
     // 월드에 배치될 때 쓸 스태틱 메시. AGJItemBase가 OnConstruction에서 자동으로 반영함
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Asset")
     UStaticMesh* ItemMeshAsset = nullptr;
+};
+
+// 방 안에서 무언가가 스폰될 자리의 용도.
+UENUM(BlueprintType)
+enum class ESpawnPointType : uint8
+{
+    Enemy   UMETA(DisplayName = "적"),
+    Item    UMETA(DisplayName = "아이템"),
+    Chest   UMETA(DisplayName = "상자")
+};
+
+// 방 하나를 무엇으로 채울지. 행 이름 = 방의 역할(전투/보물/시작).
+// 방의 모양은 BP 서브클래스가, 역할은 이 행이 정한다 - 둘을 다 BP에 넣으면
+// BP_Square_Combat, BP_Square_Treasure... 로 곱셈으로 늘어난다.
+USTRUCT(BlueprintType)
+struct FRoomSpawnData : public FTableRowBase
+{
+    GENERATED_BODY()
+
+    // 이 방에 나올 수 있는 적. 스폰할 때마다 무작위로 하나 고른다.
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Room")
+    TArray<TSubclassOf<AGJEnemyCharacter>> EnemyPool;
+
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Room")
+    int32 MinEnemies = 3;
+
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Room")
+    int32 MaxEnemies = 5;
 };

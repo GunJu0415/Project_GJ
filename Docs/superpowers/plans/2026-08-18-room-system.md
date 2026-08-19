@@ -34,6 +34,7 @@
 | `Source/Project_GJ/GJRoomSpawnPointComponent.h/.cpp` (신규) | 스폰 자리 표시 | 2 |
 | `Source/Project_GJ/GJRoomBase.h/.cpp` (신규) | 전멸 추적, 출구 제어, 확장 훅 | 2, 3 |
 | `Source/Project_GJ/GJCombatRoom.h/.cpp` (신규) | 테이블 행대로 방 채우기 | 2, 4 |
+| `Source/Project_GJ/GJBoxRoom.h/.cpp` (신규, 계획 외 추가) | 파라미터로 바닥·벽을 생성하는 그레이박스 방 | 2 |
 | `Source/Project_GJ/GJRoomExitComponent.h/.cpp` (신규) | 출구 표시와 개폐 | 3 |
 | `Source/Project_GJ/GJTreasureChest.h/.cpp` (신규) | 보물 상자 | 4 |
 | `Docs/DevGuide.md`, `DevGuide.html` (수정) | 문서화 | 5 |
@@ -583,6 +584,20 @@ Expected: `0`
 - **두 번째 플레이에서 적 수나 위치가 다르다**
 
 **클리어 로그가 안 뜨면 실패다.** Task 1의 델리게이트가 실제로 도는지가 여기서 처음 확인된다.
+
+### 실행 중 추가된 것: `AGJBoxRoom`
+
+계획에는 사용자가 바닥·벽 큐브를 손으로 놓는 것으로 돼 있었는데, 실행 중에 **파라미터로 지오메트리를 생성하는 `AGJBoxRoom : AGJCombatRoom`**을 추가했다.
+
+**모양을 하드코딩하지 않고 파라미터로 받는 이유**: 하드코딩하면 방 모양마다 C++ 클래스가 생겨서 "모양은 BP, 역할은 데이터"라는 축이 깨진다. `InteriorSize`/`WallHeight`/`WallThickness`/`FloorThickness`/`DoorWidth`를 `EditAnywhere`로 받으면 **새 모양이 새 클래스가 아니라 새 값**이 되고, Task B에서 방을 여러 개 찍어낼 때도 그대로 쓴다.
+
+실제 아트가 들어간 방은 여전히 `AGJCombatRoom`을 상속한 BP로 만든다. 둘은 공존한다.
+
+`OnConstruction`에서 다시 짓기 때문에 에디터에서 값을 바꾸는 즉시 벽이 다시 그려진다. 다시 지을 때 이전 컴포넌트를 먼저 파괴해야 한다 — 안 그러면 파라미터를 고칠 때마다 벽이 겹쳐 쌓인다.
+
+`BlueprintReadWrite`는 붙이지 않았다. 붙이면 BP 그래프에서 런타임에 크기만 바꾸고 `RebuildGeometry`를 안 불러서 숫자와 화면이 어긋난다.
+
+`BP_Room_Square`의 부모를 `AGJCombatRoom` → `AGJBoxRoom`으로 바꿨고, **스폰 포인트 5개와 테이블 설정은 전부 유지됐다.**
 
 - [ ] **Step 11: 커밋**
 

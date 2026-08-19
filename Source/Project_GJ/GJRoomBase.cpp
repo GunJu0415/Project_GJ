@@ -4,6 +4,7 @@
 // CreateDefaultSubobject<USceneComponent>에 완전한 타입이 필요하다.
 // Actor.h가 전방 선언만 주는 경우가 있어 명시적으로 넣는다.
 #include "Components/SceneComponent.h"
+#include "GJRoomExitComponent.h"
 
 AGJRoomBase::AGJRoomBase()
 {
@@ -17,6 +18,13 @@ AGJRoomBase::AGJRoomBase()
 void AGJRoomBase::BeginPlay()
 {
     Super::BeginPlay();
+
+    // 채우기보다 먼저 막는다. 적 0마리 방은 채우기 끝에 즉시 클리어되면서 다시 열리는데,
+    // 순서가 반대면 열린 뒤에 막혀서 영구히 갇힌다.
+    if (ShouldBlockExits())
+    {
+        SetExitsBlocked(true);
+    }
 
     PopulateRoom();
     CheckClearedAfterPopulate();
@@ -57,7 +65,23 @@ void AGJRoomBase::HandleRoomCleared()
 {
     bCleared = true;
 
-    UE_LOG(LogTemp, Log, TEXT("[ROOM] %s 클리어"), *GetName());
+    SetExitsBlocked(false);
+
+    UE_LOG(LogTemp, Log, TEXT("[ROOM] %s 클리어 - 출구 개방"), *GetName());
 
     OnRoomCleared.Broadcast(this);
+}
+
+void AGJRoomBase::SetExitsBlocked(bool bBlocked)
+{
+    TArray<UGJRoomExitComponent*> Exits;
+    GetComponents<UGJRoomExitComponent>(Exits);
+
+    for (UGJRoomExitComponent* Exit : Exits)
+    {
+        if (Exit)
+        {
+            Exit->SetBlocked(bBlocked);
+        }
+    }
 }

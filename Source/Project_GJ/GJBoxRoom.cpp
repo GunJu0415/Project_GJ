@@ -2,6 +2,7 @@
 #include "Components/StaticMeshComponent.h"
 #include "Engine/StaticMesh.h"
 #include "UObject/ConstructorHelpers.h"
+#include "GJRoomExitComponent.h"
 
 AGJBoxRoom::AGJBoxRoom()
 {
@@ -22,7 +23,7 @@ void AGJBoxRoom::OnConstruction(const FTransform& Transform)
 void AGJBoxRoom::RebuildGeometry()
 {
     // 이전에 만든 것을 먼저 지운다. 안 그러면 파라미터를 고칠 때마다 벽이 겹쳐 쌓인다.
-    for (UStaticMeshComponent* Part : GeneratedParts)
+    for (USceneComponent* Part : GeneratedParts)
     {
         if (Part)
         {
@@ -58,7 +59,7 @@ void AGJBoxRoom::RebuildGeometry()
     AddBox(TEXT("Wall_East"),  FVector(T, SpanY, WallHeight), FVector( WallOffX, 0.f, WallCenterZ));
     AddBox(TEXT("Wall_South"), FVector(SpanX, T, WallHeight), FVector(0.f, -WallOffY, WallCenterZ));
 
-    // 북쪽만 문 폭만큼 비우고 두 조각으로 나눈다. Task 3의 출구가 이 구멍에 들어간다.
+    // 북쪽만 문 폭만큼 비우고 두 조각으로 나눈다. 그 구멍에 출구가 들어간다.
     const float SegLen = (SpanX - DoorWidth) * 0.5f;
     if (SegLen > 0.f)
     {
@@ -72,9 +73,38 @@ void AGJBoxRoom::RebuildGeometry()
         UE_LOG(LogTemp, Warning, TEXT("[ROOM] %s: DoorWidth(%.0f)가 벽 길이(%.0f)보다 넓어 북쪽 벽이 없습니다."),
             *GetName(), DoorWidth, SpanX);
     }
+
+    AddDoorway(FVector(0.f, WallOffY, 0.f), FRotator(0.f, 90.f, 0.f));
 }
 
-UStaticMeshComponent* AGJBoxRoom::AddBox(FName ComponentName, const FVector& Size, const FVector& Location)
+void AGJBoxRoom::AddDoorway(const FVector& Location, const FRotator& Rotation)
+{
+    UGJRoomExitComponent* Exit = NewObject<UGJRoomExitComponent>(this, TEXT("Exit_North"));
+    if (!Exit)
+    {
+        return;
+    }
+
+    Exit->SetupAttachment(RootComponent);
+    Exit->SetMobility(EComponentMobility::Movable);
+    Exit->SetRelativeLocation(Location);
+
+    // 전방(+X)이 방 바깥을 향하게 돌린다. Task B가 이 방향으로 다음 방을 잇는다.
+    Exit->SetRelativeRotation(Rotation);
+    Exit->RegisterComponent();
+
+    GeneratedParts.Add(Exit);
+
+    // 블로커는 출구의 자식이라 로컬 축이 함께 돌아간다. 요 90도에서는 로컬 X가 월드 +Y가
+    // 되므로, 로컬 크기 (두께, 문폭, 높이)가 월드에서 (문폭, 두께, 높이)로 보인다.
+    AddBox(TEXT("Exit_North_Blocker"),
+        FVector(WallThickness, DoorWidth, WallHeight),
+        FVector(0.f, 0.f, WallHeight * 0.5f),
+        Exit);
+}
+
+UStaticMeshComponent* AGJBoxRoom::AddBox(FName ComponentName, const FVector& Size, const FVector& Location,
+                                         USceneComponent* Parent)
 {
     UStaticMeshComponent* Box = NewObject<UStaticMeshComponent>(this, ComponentName);
     if (!Box)
@@ -83,7 +113,9 @@ UStaticMeshComponent* AGJBoxRoom::AddBox(FName ComponentName, const FVector& Siz
     }
 
     Box->SetStaticMesh(CubeMesh);
-    Box->SetupAttachment(RootComponent);
+    // RootComponent는 TObjectPtr라 삼항 연산자에서 원시 포인터와 타입이 갈린다.
+    // GetRootComponent()가 USceneComponent*를 돌려줘서 양쪽 타입이 맞는다.
+    Box->SetupAttachment(Parent ? Parent : GetRootComponent());
 
     // Task B가 방을 런타임에 스폰하므로 Static이면 "이동한 스태틱 컴포넌트" 경고가 난다.
     Box->SetMobility(EComponentMobility::Movable);

@@ -6,6 +6,8 @@
 
 class UStaticMesh;
 class UStaticMeshComponent;
+class USceneComponent;
+class UGJRoomExitComponent;
 
 // 파라미터로 바닥과 벽을 만들어내는 그레이박스 방. 아트가 없어도 즉시 플레이된다.
 //
@@ -48,9 +50,16 @@ protected:
 
     void RebuildGeometry();
 
-    UStaticMeshComponent* AddBox(FName ComponentName, const FVector& Size, const FVector& Location);
+    // 출구 컴포넌트 하나와 그 자식 블로커를 만든다. 블로커는 출구의 자식이라
+    // 출구를 열고 닫으면 함께 사라지고 나타난다.
+    void AddDoorway(const FVector& Location, const FRotator& Rotation);
+
+    // Parent가 null이면 루트에 붙인다. Size는 월드 유닛이고 스케일 변환은 내부에서 한다.
+    UStaticMeshComponent* AddBox(FName ComponentName, const FVector& Size, const FVector& Location,
+                                 USceneComponent* Parent = nullptr);
 
     // 다시 만들 때 이전 것을 지우려고 들고 있는다. 안 그러면 편집할 때마다 쌓인다.
+    // 출구 컴포넌트도 같이 담기므로 USceneComponent로 받는다.
     UPROPERTY()
-    TArray<UStaticMeshComponent*> GeneratedParts;
+    TArray<USceneComponent*> GeneratedParts;
 };

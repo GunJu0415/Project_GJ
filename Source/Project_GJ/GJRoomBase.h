@@ -53,6 +53,9 @@ protected:
     // 채우기가 끝난 뒤 반드시 부른다. 적이 0마리면 즉시 클리어로 보낸다.
     void CheckClearedAfterPopulate();
 
+    // 이 방의 모든 UGJRoomExitComponent를 한꺼번에 막거나 연다.
+    void SetExitsBlocked(bool bBlocked);
+
     UFUNCTION()
     void OnSpawnedEnemyDied(AGJBaseCharacter* DeadCharacter);
 

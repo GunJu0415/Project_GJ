@@ -19,6 +19,8 @@ protected:
     virtual void PopulateRoom() override;
 
     void SpawnEnemies(const FRoomSpawnData& Row);
+    void SpawnItems(const FRoomSpawnData& Row);
+    void SpawnChest(const FRoomSpawnData& Row);
 
     // 이 방의 스폰 포인트 중 해당 용도인 것만 모은다.
     TArray<UGJRoomSpawnPointComponent*> GatherPoints(ESpawnPointType Type) const;

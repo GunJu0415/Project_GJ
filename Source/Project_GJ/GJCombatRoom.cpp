@@ -1,6 +1,7 @@
 #include "GJCombatRoom.h"
 #include "GJRoomSpawnPointComponent.h"
 #include "GJEnemyCharacter.h"
+#include "GJTreasureChest.h"
 #include "Engine/DataTable.h"
 #include "Engine/World.h"
 
@@ -21,6 +22,8 @@ void AGJCombatRoom::PopulateRoom()
     }
 
     SpawnEnemies(*Row);
+    SpawnItems(*Row);
+    SpawnChest(*Row);
 }
 
 void AGJCombatRoom::SpawnEnemies(const FRoomSpawnData& Row)
@@ -95,4 +98,66 @@ void AGJCombatRoom::PrepareSpawnPoints(TArray<UGJRoomSpawnPointComponent*>& Poin
     {
         Points.Swap(i, FMath::RandRange(0, i));
     }
+}
+
+void AGJCombatRoom::SpawnItems(const FRoomSpawnData& Row)
+{
+    UWorld* World = GetWorld();
+    if (!World || Row.ItemPool.Num() == 0)
+    {
+        return;
+    }
+
+    TArray<UGJRoomSpawnPointComponent*> Points = GatherPoints(ESpawnPointType::Item);
+    int32 Count = FMath::RandRange(Row.MinItems, Row.MaxItems);
+    PrepareSpawnPoints(Points, Count);
+
+    FActorSpawnParameters Params;
+    Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
+
+    for (int32 i = 0; i < Count; i++)
+    {
+        const TSubclassOf<AActor> ItemClass = Row.ItemPool[FMath::RandRange(0, Row.ItemPool.Num() - 1)];
+        if (!ItemClass)
+        {
+            continue;
+        }
+
+        World->SpawnActor<AActor>(ItemClass, Points[i]->GetComponentLocation(), Points[i]->GetComponentRotation(), Params);
+    }
+
+    UE_LOG(LogTemp, Log, TEXT("[ROOM] %s: 아이템 %d개 배치"), *GetName(), Count);
+}
+
+void AGJCombatRoom::SpawnChest(const FRoomSpawnData& Row)
+{
+    UWorld* World = GetWorld();
+    if (!World || Row.ChestPool.Num() == 0 || FMath::FRand() >= Row.ChestChance)
+    {
+        return;
+    }
+
+    TArray<UGJRoomSpawnPointComponent*> Points = GatherPoints(ESpawnPointType::Chest);
+    int32 Count = 1;
+    PrepareSpawnPoints(Points, Count);
+
+    if (Count == 0)
+    {
+        // 확률에 당첨됐는데 놓을 자리가 없다. 조용히 넘어가면 "상자가 안 나온다"로만 보인다.
+        UE_LOG(LogTemp, Warning, TEXT("[ROOM] %s: 상자가 나올 차례인데 Chest 스폰 포인트가 없습니다."), *GetName());
+        return;
+    }
+
+    const TSubclassOf<AGJTreasureChest> ChestClass = Row.ChestPool[FMath::RandRange(0, Row.ChestPool.Num() - 1)];
+    if (!ChestClass)
+    {
+        return;
+    }
+
+    FActorSpawnParameters Params;
+    Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
+
+    World->SpawnActor<AGJTreasureChest>(ChestClass, Points[0]->GetComponentLocation(), Points[0]->GetComponentRotation(), Params);
+
+    UE_LOG(LogTemp, Log, TEXT("[ROOM] %s: 상자 배치"), *GetName());
 }

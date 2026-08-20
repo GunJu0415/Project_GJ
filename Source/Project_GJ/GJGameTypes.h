@@ -11,6 +11,7 @@
 class AGJWeaponBase;
 class AGJProjectile;
 class AGJEnemyCharacter;
+class AGJTreasureChest;
 
 // -----------------------------------------
 // 캐릭터 스탯 데이터 테이블 구조체
@@ -492,4 +493,24 @@ struct FRoomSpawnData : public FTableRowBase
 
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Room")
     int32 MaxEnemies = 5;
+
+    // 바닥에 놓일 것. AGJItem BP도, 무기 BP도 들어간다.
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Room")
+    TArray<TSubclassOf<AActor>> ItemPool;
+
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Room")
+    int32 MinItems = 0;
+
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Room")
+    int32 MaxItems = 1;
+
+    // 나올 수 있는 상자. 풀로 둔 것은 나중에 희귀 상자를 추가할 때
+    // 스키마를 안 건드리기 위해서다.
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Room")
+    TArray<TSubclassOf<AGJTreasureChest>> ChestPool;
+
+    // 상자가 나올 확률(0~1). 개수가 아니라 확률인 이유: 보물은 "몇 개 나오나"가 아니라
+    // "나오나 마나"다.
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Room")
+    float ChestChance = 0.f;
 };

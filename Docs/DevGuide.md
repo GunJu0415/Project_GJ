@@ -583,6 +583,90 @@ HUD 아이콘과 인벤토리 칸이 **같은 델리게이트를 듣는다.** �
 
 ---
 
+## 6.9 룸 시스템 (Task A)
+
+방 하나가 스스로 성립한다 — 적·아이템·상자가 **매번 다르게** 채워지고, 전멸시키면 출구가 열린다. 이 프로젝트에 **적 스폰 시스템이 아예 없던 것**을 메운 작업이다.
+
+절차적 던전은 A(룸 하나가 성립) / B(절차적 배치) / C(스테이지 진행)로 쪼갰고, **지금 있는 것은 A뿐**이다. 설계 문서는 `Docs/superpowers/specs/2026-08-18-room-system-design.md`.
+
+```
+AGJRoomBase (abstract)        전멸 추적 · 출구 제어 · 확장 훅
+│   virtual PopulateRoom()           무엇을 채울지
+│   virtual HandleRoomCleared()      클리어 시 무엇을 할지
+│   virtual ShouldBlockExits()       문을 막을지
+│
+└─ AGJCombatRoom              DT_RoomSpawn 행대로 채운다
+   └─ AGJBoxRoom              파라미터로 바닥·벽·문을 생성 (그레이박스)
+      └─ BP_Room_Square       크기 값만 채운 BP
+```
+
+### 방 종류마다 클래스를 만들지 않는다
+
+시작방 / 전투방 / 보물방 / 보스방 중 **동작이 실제로 다른 것은 보스방 하나뿐이다.** 나머지는 채우고, 전멸을 세고, 문을 여는 일이 똑같고 값만 다르다. 보물방 클래스를 만들면 그 내용이 `MinEnemies=0, ChestChance=1.0`이 전부인데 **그건 데이터지 동작이 아니다.**
+
+보스방은 클리어했을 때 문을 여는 게 아니라 **스테이지를 넘긴다.** 그건 진짜 동작 차이라 오버라이드할 값어치가 있다. 지금은 훅 셋만 열어두고 `AGJBossRoom`은 안 만들었다 — 넘길 스테이지가 아직 없다.
+
+회복방·상점방·보급방(악마방) 요구가 들어왔을 때 이 구조가 시험대에 올랐는데, **방 클래스는 하나도 안 늘어났다.** 늘어나는 것은 아이템 클래스다(즉시 회복, 대가 지불). 방은 여전히 "무엇이 놓이냐"만 다르다.
+
+### 모양과 역할은 다른 축이다
+
+| 축 | 무엇이 정하나 |
+|---|---|
+| **모양** (정사각형 / 긴 복도 / L자) | **BP 서브클래스** 또는 `AGJBoxRoom`의 파라미터 |
+| **역할** (전투 / 보물 / 시작) | **`DT_RoomSpawn` 행** |
+
+둘을 다 BP에 넣으면 `BP_Square_Combat`, `BP_Square_Treasure`, `BP_Long_Combat`… 으로 **곱셈으로 늘어난다.** 분리하면 모양 4개 × 역할 3개가 BP 4개 + 행 3개로 끝난다.
+
+`SetSpawnRow(FName)`가 지연 스폰용 진입점이다. Task B의 생성기가 `SpawnActorDeferred` → `SetSpawnRow` → `FinishSpawning` 순으로 부르면 `BeginPlay` 시점에 이미 역할이 정해져 있다.
+
+### `AGJBoxRoom` — 파라미터로 만드는 그레이박스 방
+
+`InteriorSize` / `WallHeight` / `WallThickness` / `FloorThickness` / `DoorWidth`를 `EditAnywhere`로 받아 `OnConstruction`에서 바닥·벽 5조각·출구·블로커를 생성한다. **아트가 없어도 즉시 플레이된다.**
+
+모양을 하드코딩하지 않은 이유: 하드코딩하면 방 모양마다 C++ 클래스가 생겨 위의 축이 깨진다. 파라미터면 **새 모양이 새 클래스가 아니라 새 값**이 되고, Task B에서 방을 여러 개 찍어낼 때도 그대로 쓴다. 실제 아트가 들어간 방은 여전히 `AGJCombatRoom` 상속 BP로 만들면 되고 둘은 공존한다.
+
+**다시 지을 때 이전 컴포넌트를 먼저 파괴해야 한다.** 안 그러면 파라미터를 고칠 때마다 벽이 겹쳐 쌓인다.
+
+`BlueprintReadWrite`는 안 붙였다. 붙이면 BP 그래프에서 런타임에 값만 바꾸고 `RebuildGeometry`를 안 불러서 **숫자와 화면이 어긋난다.**
+
+### 채우기 규칙
+
+`BeginPlay` → (막기) → `PopulateRoom` → `CheckClearedAfterPopulate` 순이다.
+
+- **개수를 점 개수로 clamp하고 점 배열을 섞는다.** clamp가 없으면 테이블이 점보다 많은 수를 요구할 때 인덱스가 넘치고, 섞지 않으면 항상 앞쪽 점만 쓰여서 배치가 매번 같아진다.
+- **적이 0마리면 즉시 클리어**로 보낸다. 안 하면 보물방·시작방이 문이 안 열린 채로 굳는다.
+- **막기가 채우기보다 먼저다.** 적 0마리 방은 채우기 끝에 즉시 클리어되면서 다시 열리는데, 순서가 반대면 열린 뒤에 막혀서 **영구히 갇힌다.**
+
+### 출구
+
+`UGJRoomExitComponent`의 자식으로 문짝 메시를 붙이고 C++은 **표시와 콜리전만** 토글한다.
+
+> ⚠️ **표시는 자식까지 전파되지만 콜리전은 전파되지 않는다.** `SetVisibility(bPropagateToChildren=true)`만 부르면 문이 사라졌는데 못 지나가는 **보이지 않는 벽**이 남는다. 자식 프리미티브를 직접 순회해야 한다.
+
+**이 컴포넌트는 Task B의 전제다.** 던전 생성기가 출구의 위치와 전방 방향(`GetForwardVector`)을 알아야 다음 방을 잇는다. 전방(+X)이 방 바깥을 향하도록 배치한다.
+
+### 상자
+
+`AGJTreasureChest`는 E로 **한 번만** 열리고 내용물 아이템 액터를 원형으로 뿌린다.
+
+**인벤토리에 직접 넣지 않는 이유**: 인벤토리가 꽉 찼을 때 아이템이 증발한다. 바닥에 떨어뜨리면 기존 습득 흐름(`AGJItem::PickUp` → 칸이 모자라면 필드에 남음)을 그대로 타서 **새 경로가 하나도 안 생긴다.** 원형으로 흩뿌리는 것은 겹쳐 놓으면 하나만 있는 것처럼 보이기 때문이다.
+
+### 죽음 신호
+
+`AGJBaseCharacter::OnCharacterDied`(`OneParam`, `AGJBaseCharacter*`)를 이 작업에서 새로 만들었다. 기존 `OnDeath`는 `BlueprintImplementableEvent`라 **C++에서 구독할 수 없고**, 바인딩 가능한 것은 `OnDamaged`뿐이었다.
+
+**BP 사망 연출(`OnDeath`) 뒤에 방송한다.** 구독자가 델리게이트 안에서 액터를 건드릴 수 있는데, 먼저 방송하면 `OnDeath`가 이미 정리된 객체 위에서 돈다.
+
+### 구현 중 걸린 것
+
+> ⚠️ **이미 배치된 액터는 BP에 컴포넌트를 추가해도 자동으로 안 따라온다.** 아이템·상자 스폰 포인트를 추가했는데 `아이템 0개 배치`가 나왔다. BP에는 컴포넌트가 멀쩡히 있었고, **레벨에 놓인 인스턴스만 옛 상태로 굳어 있었다.** 지우고 다시 놓으면 해결된다. 앞서 추가한 적 포인트가 멀쩡했던 것은 그 뒤에 부모 클래스를 바꾸면서 전체 리인스턴싱이 일어났기 때문이고 우연이었다.
+
+> ⚠️ **`RootComponent`는 `TObjectPtr`다.** `Parent ? Parent : RootComponent` 같은 삼항 연산자는 원시 포인터와 타입이 갈려 `C2445`로 막힌다. `GetRootComponent()`가 `USceneComponent*`를 돌려주므로 그걸 쓴다.
+
+**스폰 로그는 뽑은 수와 실제 수를 같이 찍는다.** `AliveEnemies.Num()`만 찍으면 "3을 뽑았다"와 "5를 뽑았는데 2마리가 스폰에 실패했다"가 구분되지 않는다. 상자도 확률에 당첨됐는데 스폰 포인트가 없으면 경고를 남긴다 — 이 경고가 위의 인스턴스 문제를 바로 짚어냈다.
+
+---
+
 ## 7. UI / 위젯
 
 체력바/HP·MP 바는 **C++ 베이스 클래스 + `BindWidget`** 패턴을 씀 (블루프린트 이벤트 그래프에 로직을 두지 않음 — UMG 이벤트 그래프 자동화 작업 중 문제가 있었던 이력이 있어서, 값 갱신 로직은 전부 C++ `UFUNCTION(BlueprintCallable)`로 두고 디자이너에서는 이름만 맞는 위젯을 배치하면 되게 함).
@@ -693,6 +777,19 @@ HUD 아이콘과 인벤토리 칸이 **같은 델리게이트를 듣는다.** �
 | `SkillTags` | 비어 있음 | 카드 태그와 같은 축(`Tree.Fire` 등). 지금은 표시용 |
 | `ProjectileClass` | 없음 | 구체 비주얼. 비어 있으면 컴포넌트의 `DefaultProjectileClass` |
 
+### `FRoomSpawnData` — `DT_RoomSpawn` (행 이름 = 방의 역할)
+
+| 필드 | 타입 | 설명 |
+|---|---|---|
+| `EnemyPool` | `TArray<TSubclassOf<AGJEnemyCharacter>>` | 나올 수 있는 적. 스폰마다 무작위로 하나 고름 |
+| `MinEnemies` / `MaxEnemies` | `int32` | 적 수 범위. **스폰 포인트 개수로 잘린다** |
+| `ItemPool` | `TArray<TSubclassOf<AActor>>` | 바닥에 놓일 것. `AGJItem` BP도 무기 BP도 들어감 |
+| `MinItems` / `MaxItems` | `int32` | 아이템 수 범위 |
+| `ChestPool` | `TArray<TSubclassOf<AGJTreasureChest>>` | 나올 수 있는 상자 |
+| `ChestChance` | `float` (0~1) | 상자가 **나오나 마나**. 개수가 아니라 확률인 이유는 보물이라서 |
+
+**이 표가 "매번 다른 방"의 전부다.** 개수를 범위에서 뽑고, 풀에서 무작위로 골라, 스폰 포인트 중 무작위로 골라 놓는다. 같은 껍데기가 매번 다르게 나온다. 현재 값(`Combat_Basic` 행)은 **임시 테스트 값**이다.
+
 ### `FStatValues` / `FStatModifier` — 데이터 테이블 행 아님 (스탯 보너스용)
 
 `FStatValues`는 `FCharacterStat`과 **같은 10개 필드**(`MaxHP`, `MaxMP`, `BaseAttackPower`, `SkillPower`, `RequiredEXP`, `Defense`, `MoveSpeed`, `CooldownReduction`, `CritChance`, `CritMultiplier`)를 갖되 **전부 기본값이 0**이다. `FCharacterStat`을 재사용하지 않는 이유가 이것 — 그쪽 기본값이 `MaxHP=100`, `MoveSpeed=600`, `CritMultiplier=2`라서 "보너스 없음"을 표현할 수 없다. 합칠 때 쓰는 `operator+=`는 `GJGameTypes.cpp`에 있다.
@@ -728,10 +825,16 @@ HUD 아이콘과 인벤토리 칸이 **같은 델리게이트를 듣는다.** �
 - 무기 스왑 몽타주(`SwapMontageAsset`)는 데이터 테이블에서 아직 안 채웠을 수 있음 — 비어있으면 그냥 즉시 교체(정상 동작). 테스트용으로 다른 용도 몽타주(닷지 등)를 임시로 재사용해도 `OnMontageEndedEvent`가 상태 기준으로 분기해서 안전하지만, 실제 전용 스왑 애님이 생기면 교체 필요
 - `FItemData.bPersistAcrossRuns`는 데이터 필드만 있고 여전히 읽히지 않음 — 런 루프(M1)는 완성됐지만 "무엇이 회차를 넘어 남는가"를 정하는 인계 규칙은 미구현 (M3)
 - `RebirthCount`는 누적 도전 횟수로 설계되었으나 세이브가 없어 앱 종료 시 0으로 돌아감 (M4에서 해결 예정)
-- 런은 **사망으로만** 끝남 — 클리어(승리) 조건이 없음 (M5)
 - 허브에는 런 시작 포탈 하나뿐 — 상점/영구 강화 미구현 (M6)
 - `FCharacterStat.CooldownReduction`은 필드만 있고 어디에도 연결되지 않음 — 적용 대상이 될 스킬 시스템이 아직 없음
 - `ESkillType::Persistent`(지속형 스킬) 미구현 — 발사 시 경고만 찍힘
+- 방이 하나뿐이고 손으로 배치해야 한다 — 절차적 배치(Task B)가 아직 없다
+- **"처음부터 깔림"의 대가가 Task B에서 드러난다**: 던전 전체가 한 번에 채워지면 먼 방의 적도 처음부터 살아서 플레이어를 향해 길찾기를 한다. "플레이어가 일정 거리 밖이면 AI를 꺼둔다" 정도로 싸게 막아야 한다
+- 스테이지 진행과 런 클리어가 없다 (Task C) — `AGJBossRoom`이 `HandleRoomCleared`를 오버라이드할 자리만 비어 있다
+- 회복 아이템과 대가 지불 아이템이 없다 (A2) — 회복방·보급방은 이것들이 생기면 **테이블 행 추가만으로** 성립한다
+- 상점은 화폐 시스템이 선행한다. 바닥에 아이템을 까는 대신 **상점 NPC와 상호작용**하는 구조로 가기로 했다. 골드가 런을 넘어 남는지가 영구 강화(M6)와 얽히는 갈림길이다
+- 방에 문이 **북쪽 하나뿐**이다 — `AGJBoxRoom::AddDoorway`를 여러 번 부르면 늘어나지만 Task B가 필요해질 때 하면 된다
+- 문 연출이 없다 — 블로커 큐브가 그냥 사라진다. `OnRoomCleared`를 BP에서 받아 붙이면 된다
 - 쿨타임 표시가 시계방향 차오름이 아니라 **위에서 아래로 걷히는 형태**다 — 방사형 마스크 머티리얼을 만들면 `WBP_SkillIcon`에서 `CooldownBar`를 지우고 `CooldownImage`를 넣는 것만으로 교체된다(**C++ 변경 없음**, 7절 참고)
 - 스킬 아이콘이 자리표시자 텍스처다(`T_GridChecker_A`) — 카드 아이콘과 같은 상태
 - 차징 구체에 이펙트·머티리얼 연출이 없음 — 발사될 구체의 메시를 그대로 키울 뿐이고 시전 애니메이션도 없다

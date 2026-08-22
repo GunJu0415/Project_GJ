@@ -2,7 +2,7 @@
 
 > 대상: 처음 이 코드베이스를 리뷰하는 사람. "어디에 뭐가 있고, 뭘 하는 함수인지" 빠르게 파악하는 용도.
 > 기준: UE 5.8, C++ 우선 + 얇은 블루프린트 레이어. 탑다운 카메라 런앤건/핵앤슬래시. 솔로 개발.
-> 마지막 갱신 시점: 2026-08-08 세션 기준 (M1 런 루프까지 반영됨 — 닷지 버그 수정, 무기 2슬롯 스왑/필드 픽업, 탄약 UI 델리게이트 재설계, 인벤토리 UI, 로그라이트 회차 루프)
+> 마지막 갱신 시점: 2026-08-22 세션 (카드/스킬/룸 시스템 + 습득 아이템 종류까지 반영 — 스킬 UI, MP 부족 표시, 룸 시스템 Task A, 회복/악마 아이템)
 
 ---
 
@@ -35,7 +35,16 @@ AGJWeaponBase (abstract, AActor, IGJInteractable 구현)
 └─ AGJWeapon_Ranged     — 원거리 무기 (현재 유일하게 구현된 무기 타입)
 
 AGJItemBase (abstract, AActor, IGJInteractable 구현)
-└─ AGJItem              — 데이터 테이블 기반 범용 습득 아이템 (BP_Item_XXX로 파생시켜 사용)
+├─ AGJItem              — 인벤토리에 넣는 범용 습득 아이템 (BP_Item_XXX로 파생시켜 사용)
+├─ AGJHealItem          — 줍는 즉시 HP/MP 회복 (BP_HealItem)
+└─ AGJPricedItem (abstract) — 대가를 치러야 주는 아이템
+   └─ AGJDevilItem      — 최대 체력으로 카드 선택을 산다 (BP_DevilItem)
+
+AGJRoomBase (abstract, AActor) — 채우고, 전멸을 세고, 문을 여는 방
+└─ AGJCombatRoom        — DT_RoomSpawn 행대로 적/아이템/상자를 배치
+   └─ AGJBoxRoom        — 바닥·벽·문을 파라미터로 만드는 그레이박스 방 (BP_Room_Square)
+
+AGJTreasureChest (AActor, IGJInteractable 구현) — 한 번만 열리고 내용물을 바닥에 뿌린다
 
 IGJInteractable (UInterface) — 상호작용 가능한 모든 것의 공통 인터페이스
                                 (소비 아이템, 필드에 놓인 무기, 허브의 런 시작 포탈, 나중에 문/버튼 등)
@@ -46,6 +55,9 @@ AGJProjectile (AActor)  — 오브젝트 풀링되는 총알
 
 UCharacterStateComponent (UActorComponent) — Idle/Attack/Dodge/WeaponSwap 등 상태 머신
 UGJInventoryComponent (UActorComponent) — 플레이어 인벤토리 (AGJCharacter에 부착)
+UGJCardComponent (UActorComponent) — 카드 선택 (AGJCharacter에 부착, OnLevelUp 구독)
+UGJSkillComponent (UActorComponent) — 액티브 스킬 슬롯/쿨타임/차징
+UGJRoomExitComponent (USceneComponent) — 방 출구. 자식 문짝의 표시와 콜리전을 토글
 
 AI (플레이어 아님, 적 전용)
 ├─ AGJEnemyAIController (AAIController)
@@ -58,6 +70,9 @@ UI (UUserWidget)
 ├─ UGJInventoryWidget     — 인벤토리 창 (아이템 그리드 페이지 + 무기 페이지, 탭 전환)
 ├─ UGJInventorySlotWidget — 인벤토리 그리드 한 칸 (드래그로 자리 교체, 더블클릭으로 소비 아이템 사용)
 ├─ UGJWeaponSlotWidget    — 무기 페이지 한 칸 (클릭으로 장착 전환, 드래그로 1/2번 자리 교체)
+├─ UGJSkillSlotWidget     — 스킬 페이지 한 칸 (드래그로 슬롯 교체, 쿨타임까지 함께)
+├─ UGJSkillIconWidget     — HUD 스킬 아이콘 (쿨타임 덮개 + MP 부족 색)
+├─ UGJCardSelectWidget    — 카드/교체 선택 화면 (인덱스만 돌려준다)
 └─ UGJGameOverWidget      — 런 종료 시 뜨는 게임오버 화면
 
 UGJCombatStatics (UBlueprintFunctionLibrary) — 데미지 공식 단일 소스
@@ -66,6 +81,9 @@ UGJCombatStatics (UBlueprintFunctionLibrary) — 데미지 공식 단일 소스
 ├─ FCharacterStat  — DT_CharacterStat
 ├─ FWeaponStat     — DT_WeaponStat
 ├─ FEnemyStat      — DT_EnemyStat
+├─ FCardData       — DT_CardData
+├─ FSkillData      — DT_SkillData
+├─ FRoomSpawnData  — DT_RoomSpawn
 └─ FItemData       — 인벤토리 아이템 정의 (예: DT_ItemData)
 ```
 
@@ -276,6 +294,61 @@ UGJCombatStatics (UBlueprintFunctionLibrary) — 데미지 공식 단일 소스
 
 **Tab으로 닫기 — 포커스에 의존하지 않는 전역 리스너**: `UGJInventoryWidget`은 `NativeOnInitialized()`에서 `FSlateApplication::Get().OnApplicationPreInputKeyDownListener()`에 핸들러를 등록해서 Tab 키를 감지함(포커스가 어디에 있든 항상 통지받음). 처음엔 `NativeOnPreviewKeyDown`(포커스 기반)으로 했었는데, 탭 버튼처럼 포커스를 받을 수 있는 자식 위젯이 있으면 인벤토리 바깥 클릭으로 포커스가 위젯 트리 밖으로 나갔을 때 Tab이 아예 안 들어오는 문제가 있어서 바꿈. 리스너 해제는 `NativeDestruct()`가 아니라 **`BeginDestroy()`**(UObject 레벨)에서 함 — `NativeDestruct`는 위젯이 진짜로 파괴될 때가 아니라 `RemoveFromParent()`(=닫을 때)마다 불려서, 거기서 해제하면 처음 닫을 때 리스너가 없어지고 재등록도 안 돼(`NativeOnInitialized`는 생성 시 1회뿐) 두 번째 닫기부터 Tab이 안 먹히는 버그가 있었음.
 
+### 3.3 습득 아이템 종류 (회복 / 대가형)
+
+`AGJItemBase`의 서브클래스는 **`PickUp()` 하나만 다르다.** 데이터도 컴포넌트도 베이스 것을 그대로 쓴다.
+
+```
+AGJItemBase (abstract)
+ ├─ AGJItem        인벤토리에 넣는다
+ ├─ AGJHealItem    즉시 회복하고 사라진다
+ └─ AGJPricedItem (abstract)  대가를 치러야 준다
+      └─ AGJDevilItem   최대 체력으로 지불한다
+```
+
+| 클래스 | `PickUp()`이 하는 일 | BP |
+|---|---|---|
+| `AGJHealItem` | `Picker->ApplyConsumableEffect(ItemStat.HealAmount, ItemStat.ManaRecoverAmount)` 후 `Destroy()` | `BP_HealItem` (행 `Item_HealPotion`) |
+| `AGJPricedItem` | `CanAfford` → `GrantReward` → `PayPrice` → `Destroy()` | 없음 (abstract) |
+| `AGJDevilItem` | 위 흐름 + `MaxHPCost`/`MinMaxHPAfterPurchase` | `BP_DevilItem` (행 `Item_DevilDeal`) |
+
+**회복 아이템은 데이터 테이블에 새 필드를 하나도 안 만들었다.** `FItemData`에 `HealAmount`/`ManaRecoverAmount`가 이미 있고 `ApplyConsumableEffect`가 이미 적용한다. 인벤토리에 넣어 쓰는 소모품과 **같은 값**을 읽으므로 회복량이 두 벌로 갈라지지 않는다.
+
+#### 지불보다 지급이 먼저다
+
+`AGJPricedItem::PickUp`은 `GrantReward`가 `false`를 돌려주면 **대가를 청구하지 않고 아이템도 남긴다.** 순서가 반대면 보상 지급이 실패했을 때 대가만 날아간다. `CardComponent`가 없는 건 설정 실수지만, 설정 실수가 최대 체력을 먹어치우면 안 된다.
+
+**못 낼 때 조용히 넘어가지 않는다.** 아무 반응 없이 아이템이 그대로 있으면 플레이어는 상호작용이 고장 난 줄 안다.
+
+```
+[PRICE] BP_DevilItem_C_0: 지불 불가 - 최대 체력 30 - 20 = 10 이(가) 하한 20 미만입니다
+```
+
+이유를 찍는 `GetAffordFailText`가 `GetPriceText`와 **별도 virtual인 이유**: 가격표는 무엇을 내는지만 말하고, **왜 못 내는지는 지불 수단을 아는 쪽만 말할 수 있다.** 베이스는 무엇이 모자란지 모른다.
+
+#### 최대 체력을 직접 깎지 않는다
+
+> ⚠️ `MaxHP`에 직접 대입하면 **다음 레벨업의 `RecalculateStats`가 `BaseStat + StatBonus`로 다시 계산하면서 지운다.** 대가를 치렀는데 레벨업 한 번에 돌려받는 꼴이 되고, 이건 조용히 지나가는 종류의 버그다.
+
+`AddStatBonus`에 음수 `Add.MaxHP`를 얹는다 — 카드가 쓰는 것과 **같은 경로**라 누적·재계산 규칙이 한 곳에만 있다.
+
+**0 체력 좀비 상태 방어는 새로 안 짰다.** `RecalculateStats`가 최대 체력이 내려갈 때 현재 체력도 같이 내리는데 하한이 `(CurrentHP > 0) ? 1 : 0`이다. **"최대 체력 -20%" 리스크 카드에서 같은 문제를 이미 풀었다** — 사망 판정이 `TakeDamage` 안에만 있어서, 스탯 변화로 0이 되면 죽지 않고 `IsDead()`만 true인 좀비가 된다.
+
+`MinMaxHPAfterPurchase`(기본 20)는 그것과 별개다. `RecalculateStats`는 최대 체력을 1까지 허용하는데 **최대 체력 1은 게임이 성립하지 않는 상태**라 디자이너가 정하는 하한을 따로 둔다.
+
+#### 가격은 `FItemData`가 아니라 액터에 있다
+
+`MaxHPCost`/`MinMaxHPAfterPurchase`는 `UPROPERTY(EditAnywhere)`다. **가격은 아이템 종류의 성질이 아니라 이 배치의 성질이다** — 같은 것이 악마방에선 비싸고 다른 데선 쌀 수 있다. 테이블에 넣으면 모든 아이템이 안 쓰는 칼럼을 갖게 된다.
+
+#### 회복방·보급방에 방 클래스는 필요 없다
+
+| 방 | 어떻게 성립하나 |
+|---|---|
+| 회복방 | `AGJCombatRoom` + `MinEnemies`/`MaxEnemies` 0 + `ItemPool = [BP_HealItem]` |
+| 보급방(악마방) | `AGJCombatRoom` + `MinEnemies`/`MaxEnemies` 0 + `ItemPool = [BP_DevilItem]` |
+
+6.9절의 "방 종류마다 클래스를 만들지 않는다"가 실제로 값을 하는 지점이다. **늘어난 것은 아이템 클래스뿐이고 방은 여전히 "채우고, 전멸을 세고, 문을 여는" 일만 한다.**
+
 ---
 
 ## 4. 무기 / 투사체
@@ -425,7 +498,10 @@ BT 트리 구조 자체(Selector로 IsInAttackRange 분기해서 MoveTo vs Melee
 | 제외 조건 | `Weight <= 0`, 이미 먹은 `bStackable=false` 카드, `WeaponClass`가 빈 무기 카드, 효과가 전부 0인 스탯 카드. **무기 슬롯이 꽉 찼다는 이유로는 안 거른다** |
 | 장수 | `GetDrawCount()` = `NumCardsToDraw` + `BonusCardSlots`(영구 특성용) + `ExtraCardChance` 판정 1장. 최소 1장 보장 |
 | 대기열 | `PendingChoices` 카운터. 킬 한 번에 레벨 2→5가 실제로 일어나므로(`AddEXP`의 `while` 루프) 화면을 한 번만 띄우면 보상 3번을 잃는다 |
+| 지급 진입점 | `GrantCardChoice()` (public). 대기열에 하나 쌓고, 화면이 안 떠 있을 때만 띄운다. `HandleLevelUp`은 이걸 부르기만 한다 |
 | 효과 적용 | `StatBonus` → `AddStatBonus`, `GrantWeapon` → 스폰 후 `PickUpWeapon`(슬롯이 차 있으면 교체 선택), `Ability` → `EquipSkill`(슬롯이 차 있으면 교체 선택, 6.8절) |
+
+**레벨업만 카드를 주는 게 아니다.** `GrantCardChoice()`를 밖으로 뺀 이유다 — 지금은 `AGJDevilItem`(3.3절)이 부르고, 스테이지 진행이 붙으면 보스방 클리어가 같은 함수를 부른다. 개발용 `GJShowCards`와 다른 점은 **대기열을 존중한다는 것**이다. 그쪽은 뽑아서 바로 띄우므로 이미 떠 있는 화면을 덮어쓴다.
 
 **위젯은 카드를 모른다.** `UGJCardSelectWidget`은 `FGJChoiceEntry`(이름/설명/아이콘) 목록을 받아 늘어놓고 **선택 인덱스**만 돌려준다. 인덱스의 의미는 컴포넌트가 `EGJChoiceMode`로 해석한다 — `Card`면 뽑힌 카드 목록의 위치, `WeaponReplace`면 버릴 무기 슬롯, `SkillReplace`면 버릴 스킬 슬롯. **덕분에 교체용 위젯이 따로 없다.**
 
@@ -804,11 +880,15 @@ AGJRoomBase (abstract)        전멸 추적 · 출구 제어 · 확장 훅
 | `MaxStackSize` | 99 | 한 슬롯에 최대로 겹쳐 쌓일 수 있는 개수 (1이면 스택 불가) |
 | `SellPrice` | 0 | 상점에 팔 때 받는 금액 |
 | `BuyPrice` | 0 | 상점에서 살 때 지불하는 금액 |
-| `HealAmount` | 0 | 사용 시 회복되는 HP량 (`ApplyConsumableEffect`가 적용) |
-| `ManaRecoverAmount` | 0 | 사용 시 회복되는 MP량 (`ApplyConsumableEffect`가 적용) |
+| `HealAmount` | 0 | 회복되는 HP량. **인벤토리에서 쓸 때와 `AGJHealItem`을 주울 때가 같은 값을 읽는다**(둘 다 `ApplyConsumableEffect`) |
+| `ManaRecoverAmount` | 0 | 회복되는 MP량 (위와 같음) |
 | `bPersistAcrossRuns` | false | true면 새 회차(런)를 시작해도 인벤토리에서 사라지지 않음(예: 영구 재화/장비). false면 회차가 바뀌면 사라짐 |
 | `Icon` | — | UTexture2D. 인벤토리 그리드 UI에 씀 |
 | `ItemMeshAsset` | — | UStaticMesh. `AGJItemBase`가 OnConstruction에서 자동으로 반영 |
+
+**대가형 아이템의 가격은 이 표에 없다.** `AGJDevilItem::MaxHPCost`처럼 액터 프로퍼티다 — 이유는 3.3절.
+
+현재 행: `1`, `2`(초기 테스트용), `Item_HealPotion`(HP 40 / MP 20), `Item_DevilDeal`.
 
 ---
 
@@ -831,7 +911,7 @@ AGJRoomBase (abstract)        전멸 추적 · 출구 제어 · 확장 훅
 - 방이 하나뿐이고 손으로 배치해야 한다 — 절차적 배치(Task B)가 아직 없다
 - **"처음부터 깔림"의 대가가 Task B에서 드러난다**: 던전 전체가 한 번에 채워지면 먼 방의 적도 처음부터 살아서 플레이어를 향해 길찾기를 한다. "플레이어가 일정 거리 밖이면 AI를 꺼둔다" 정도로 싸게 막아야 한다
 - 스테이지 진행과 런 클리어가 없다 (Task C) — `AGJBossRoom`이 `HandleRoomCleared`를 오버라이드할 자리만 비어 있다
-- 회복 아이템과 대가 지불 아이템이 없다 (A2) — 회복방·보급방은 이것들이 생기면 **테이블 행 추가만으로** 성립한다
+- 회복방·보급방의 `DT_RoomSpawn` 행이 아직 없다 — 클래스(3.3절)와 BP는 준비됐고 **행 추가만 남았다**
 - 상점은 화폐 시스템이 선행한다. 바닥에 아이템을 까는 대신 **상점 NPC와 상호작용**하는 구조로 가기로 했다. 골드가 런을 넘어 남는지가 영구 강화(M6)와 얽히는 갈림길이다
 - 방에 문이 **북쪽 하나뿐**이다 — `AGJBoxRoom::AddDoorway`를 여러 번 부르면 늘어나지만 Task B가 필요해질 때 하면 된다
 - 문 연출이 없다 — 블로커 큐브가 그냥 사라진다. `OnRoomCleared`를 BP에서 받아 붙이면 된다
@@ -842,19 +922,21 @@ AGJRoomBase (abstract)        전멸 추적 · 출구 제어 · 확장 훅
 - Skill2(Q)·Skill3(F)에 넣을 실제 스킬이 없음 — 슬롯·입력 바인딩·교체 UI는 전부 준비됨
 - `DT_SkillData`의 파이어볼 수치와 `DT_CharacterStat`의 `SkillPower` 곡선은 **임시 테스트 값**
 - `FCharacterStat.CooldownReduction`은 여전히 어디에도 연결되지 않음 — **스킬 쿨타임에 적용하는 게 자연스러운 첫 후보**가 됐다
-- 스테이지 클리어 시 카드 지급 트리거가 없음 — 진행 구조(M5)가 생긴 뒤. `UGJCardComponent`의 대기열 진입점(`HandleLevelUp` 몸통)을 공개 함수로 빼면 그쪽에서 부르기만 하면 된다
+- 스테이지 클리어 시 카드 지급 트리거가 없음 — 진행 구조(M5)가 생긴 뒤. **대기열 진입점은 `GrantCardChoice()`로 이미 공개돼 있어서 부르기만 하면 된다**
 - 카드 리롤/스킵이 없음 — 3장이 전부 마음에 안 들어도 반드시 하나를 골라야 함. `DrawCards(Count)`는 부작용이 없게 짜여 있어서 리롤은 재호출만으로 되지만, 버튼과 횟수 관리가 없다
 - 선택지 수를 늘리는 경로(`BonusCardSlots`, `ExtraCardChance`)는 멤버만 있고 아무도 쓰지 않음 — 영구 특성(M6)이 생기면 여기에 꽂는다
 - 태그 배율을 올리는 주체가 없음 — `SetTagWeightMultiplier`는 콘솔에서만 호출된다. "직업 카드"나 "먹은 카드 누적"이 붙으면 둘 다 이 함수로 들어와야 한다
 - 카드 희귀도가 확률(`Weight`)로만 존재하고 시각적 구분(색 테두리 등)이 없음
 - `DT_CardData`의 카드 6장은 **검증용 임시 데이터** — 아이콘도 기존 텍스처를 자리표시자로 쓰고 있음
-- 회복 수단이 하나도 없음 — 레벨업도 최대치 증가분만 얹고, 회복 카드나 포션이 없어서 런 내내 체력이 단방향으로 깎인다. 회복 카드를 넣으려면 `ECardEffectType`에 값 추가가 필요
+- 회복 **카드**가 없음 — `AGJHealItem`(3.3절)이 생겨서 필드 회복은 되지만, 카드로 회복하려면 `ECardEffectType`에 값 추가가 필요하다
 - 레벨업/경험치 획득 연출(팝업, 사운드, 파티클)이 없음 — 현재는 HUD 바와 `UE_LOG`뿐
 - `DT_CharacterStat`의 레벨 2~5 성장 곡선은 **임시 테스트 값** — 실제 밸런싱은 스테이지 진행(M5)이 생긴 뒤에 해야 의미가 있음
 - `WBP_PlayerHUD`의 초상화(`PortraitImage`)는 `T_UE_Logo_M` 자리표시자 — 실제 캐릭터 일러스트로 교체 필요
 - 모디파이어 개별 제거/시간제 버프가 없음 — `StatBonus`는 누적만 한다. 10초짜리 이동속도 버프나 무기 장착 중에만 붙는 스탯이 필요해지면 `TArray<FStatModifier>` + 핸들 방식으로 바꿔야 하며, 그때도 `RecalculateStats`만 고치면 되고 실효값을 읽는 코드는 안 바뀐다
 - 적에게는 스탯 보너스가 없음 — `ApplyEnemyStat`이 테이블 값을 멤버에 직접 대입한다. 스테이지가 올라갈수록 적이 강해지는 스케일링(M5)이 필요해지면 같은 구조체를 재사용하면 된다
 - 치명타가 터져도 화면에 표시되지 않음 — 치명타 여부가 공격자 쪽에만 있어서, UI를 붙이려면 커스텀 `FDamageEvent`가 필요
+- 가격표 UI가 없음 — 대가형 아이템의 가격은 로그로만 확인된다. 월드 위젯이 필요한 별도 작업이다
+- `AGJPricedItem` 아래 `AGJShopItem` 자리가 비어 있다 — 화폐가 생기면 `CanAfford`/`PayPrice`만 구현하면 되고 지불 흐름은 안 건드린다
 
 ---
 

@@ -340,7 +340,7 @@ void UGJCardComponent::GJShowCards()
     }
 }
 
-void UGJCardComponent::HandleLevelUp(int32 NewLevel)
+void UGJCardComponent::GrantCardChoice()
 {
     PendingChoices++;
 
@@ -350,6 +350,11 @@ void UGJCardComponent::HandleLevelUp(int32 NewLevel)
     {
         ShowNextChoice();
     }
+}
+
+void UGJCardComponent::HandleLevelUp(int32 NewLevel)
+{
+    GrantCardChoice();
 }
 
 void UGJCardComponent::ShowNextChoice()

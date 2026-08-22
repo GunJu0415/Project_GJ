@@ -45,6 +45,12 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Card")
     void GJShowCards();
 
+    // 카드 선택을 한 번 지급한다. 레벨업 말고도 카드를 주는 곳(악마 아이템, 나중엔 보스방
+    // 클리어)이 생겨서 대기열 진입점을 밖으로 뺐다. 위의 GJShowCards와 달리 대기열을 존중한다 -
+    // 이미 화면이 떠 있으면 카운터만 올라가고 순서대로 뜬다.
+    UFUNCTION(BlueprintCallable, Category = "Card")
+    void GrantCardChoice();
+
 protected:
     virtual void BeginPlay() override;
 

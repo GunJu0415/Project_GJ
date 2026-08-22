@@ -349,6 +349,10 @@ public:
     UFUNCTION(BlueprintPure, Category = "Skill")
     UStaticMeshComponent* GetChargeOrbMesh() const { return ChargeOrbMesh; }
 
+    // 카드를 보상으로 주는 쪽(악마 아이템 등)이 대기열에 넣을 때 쓴다.
+    UFUNCTION(BlueprintPure, Category = "Card")
+    UGJCardComponent* GetCardComponent() const { return CardComponent; }
+
 protected:
 
     UPROPERTY(EditDefaultsOnly, Category = "Weapon")

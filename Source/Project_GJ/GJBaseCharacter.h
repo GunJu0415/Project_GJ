@@ -73,6 +73,15 @@ public:
     UFUNCTION(BlueprintPure, Category = "Stat")
     bool IsDead() const { return CurrentHP <= 0.f; }
 
+    // MaxHP/CurrentHP는 protected라 밖에서 못 읽는다. 대가로 최대 체력을 요구하는
+    // 아이템처럼 "지금 낼 수 있는가"를 판단해야 하는 쪽이 생겨서 읽기 창구만 연다.
+    // 쓰기는 열지 않는다 - 최대 체력을 직접 대입하면 RecalculateStats가 지운다.
+    UFUNCTION(BlueprintPure, Category = "Stat")
+    float GetMaxHP() const { return MaxHP; }
+
+    UFUNCTION(BlueprintPure, Category = "Stat")
+    float GetCurrentHP() const { return CurrentHP; }
+
     virtual float TakeDamage(float DamageAmount, struct FDamageEvent const& DamageEvent, class AController* EventInstigator, AActor* DamageCauser) override;
 
     UPROPERTY(BlueprintAssignable, Category = "Stat")
